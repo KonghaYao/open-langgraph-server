@@ -181,7 +181,7 @@ To integrate Open LangGraph Server into a Hono.js project, follow these steps:
     import { registerGraph } from '@langgraph-js/pure-graph';
     import { graph } from './agent/graph-name/graph';
     import { Hono } from 'hono';
-    import LangGraphApp, { type LangGraphServerContext } from '@langgraph-js/pure-graph/dist/adapter/hono/index';
+    import { createHonoAdapter, type LangGraphServerContext } from '@langgraph-js/pure-graph/dist/adapter/hono/index';
     import { cors } from 'hono/cors';
 
     registerGraph('test', graph);
@@ -198,7 +198,10 @@ To integrate Open LangGraph Server into a Hono.js project, follow these steps:
     });
 
     app.use(cors());
-    app.route('/api', LangGraphApp);
+
+    // Create LangGraph adapter and mount routes
+    const langGraphApp = createHonoAdapter({ basePath: '/api' });
+    app.route('/api', langGraphApp);
 
     export default app;
     ```

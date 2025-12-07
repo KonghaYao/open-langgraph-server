@@ -76,10 +76,27 @@ const routes: Route[] = [
     },
 ];
 
+const replaceRequest = (req: Request) => {
+    const path = new URL(req.url).pathname.toString();
+    let basePath = '';
+    if (path.includes('/threads')) {
+        basePath = path.split('/threads')[0];
+    } else if (path.includes('/assistants')) {
+        basePath = path.split('/assistants')[0];
+    }
+    return new Request(req.url.replace(basePath, ''), {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+        duplex: req.duplex,
+    });
+};
+
 /**
  * 主路由处理器
  */
 export async function handleRequest(req: Request, context: LangGraphServerContext = {}): Promise<Response> {
+    req = replaceRequest(req);
     try {
         // 初始化全局配置
         await LangGraphGlobal.initGlobal();

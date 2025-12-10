@@ -8,11 +8,11 @@ import {
 } from '@langchain/langgraph';
 import { schemaMetaRegistry } from '@langchain/langgraph/zod';
 import z from 'zod';
-
+import { getDefaultsForSchema } from 'zod-defaults';
 const composeWithState = <T>(oldState: T, newState: T, stateSchema: any) => {
     const channels = schemaMetaRegistry.getChannelsForSchema(stateSchema);
 
-    const previewState = stateSchema.parse(oldState || {});
+    const previewState = stateSchema.parse(oldState || getDefaultsForSchema(stateSchema));
     // 使用 channels 的 reducer 来合并 state
     const mergedState = { ...previewState };
     for (const [channelName, _] of Object.entries(channels)) {

@@ -35,6 +35,9 @@ importers:
       zod:
         specifier: ^4
         version: 4.1.12
+      zod-defaults:
+        specifier: ^0.2.3
+        version: 0.2.3(zod@4.1.12)
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.0.0
@@ -1546,6 +1549,11 @@ packages:
   zip-stream@6.0.1:
     resolution: {integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==}
     engines: {node: '>= 14'}
+
+  zod-defaults@0.2.3:
+    resolution: {integrity: sha512-7pYkOH1/c+Ril5AZUYtsbhMkehkI8CMqzFZ7YZXfC9SMLRvZuLyonQE7BAIVSNxeTpqTZmW5BLxGSzWMnKNdIw==}
+    peerDependencies:
+      zod: ^4.1.12
 
   zod-to-json-schema@3.24.6:
     resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
@@ -3095,6 +3103,10 @@ snapshots:
       compress-commons: 6.0.2
       readable-stream: 4.7.0
     optional: true
+
+  zod-defaults@0.2.3(zod@4.1.12):
+    dependencies:
+      zod: 4.1.12
 
   zod-to-json-schema@3.24.6(zod@3.25.76):
     dependencies:

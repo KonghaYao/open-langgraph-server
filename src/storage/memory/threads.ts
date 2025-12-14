@@ -42,6 +42,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
         let filteredThreads = [...this.threads];
         if (query?.status) {
@@ -87,7 +88,14 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         const offset = query?.offset || 0;
         const limit = query?.limit || filteredThreads.length;
 
-        return filteredThreads.slice(offset, offset + limit);
+        return filteredThreads.slice(offset, offset + limit).map((i) => {
+            // 当不需要 values 字段时，进行删除
+            if (query?.withoutDetails) {
+                i.values = null as unknown as ValuesType;
+                i.interrupts = null as unknown as any;
+            }
+            return i;
+        });
     }
 
     async get(threadId: string): Promise<Thread<ValuesType>> {

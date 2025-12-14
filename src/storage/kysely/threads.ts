@@ -84,8 +84,16 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
         let queryBuilder = this.db.selectFrom('threads').selectAll();
+
+        // 根据 without_details 决定是否选择 values 和 interrupt 字段
+        if (query?.withoutDetails) {
+            queryBuilder = this.db
+                .selectFrom('threads')
+                .select(['thread_id', 'created_at', 'updated_at', 'metadata', 'status']) as any;
+        }
 
         // 添加状态过滤
         if (query?.status) {

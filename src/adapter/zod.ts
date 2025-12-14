@@ -137,6 +137,7 @@ export const ThreadSearchPayloadSchema = z
         offset: z.number().int().gte(0).describe('Offset to start from.').optional(),
         sort_by: z.enum(['thread_id', 'status', 'created_at', 'updated_at']).describe('Sort by field.').optional(),
         sort_order: z.enum(['asc', 'desc']).describe('Sort order.').optional(),
+        without_details: z.boolean().describe('Whether to return values.').optional(),
     })
     .describe('Payload for listing threads.');
 

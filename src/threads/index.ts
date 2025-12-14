@@ -18,6 +18,11 @@ export interface BaseThreadsManager<ValuesType = unknown> {
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        /**
+         * @default false
+         * @description 是否不返回 values 字段
+         */
+        withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]>;
     get(threadId: string): Promise<Thread<ValuesType>>;
     delete(threadId: string): Promise<void>;

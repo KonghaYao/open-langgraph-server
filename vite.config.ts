@@ -9,6 +9,7 @@ export default {
                 index: 'src/index.ts',
                 'adapter/hono/index': 'src/adapter/hono/index.ts',
                 'adapter/nextjs/index': 'src/adapter/nextjs/index.ts',
+                'adapter/fetch/index': 'src/adapter/fetch/index.ts',
             },
             formats: ['es'],
         },

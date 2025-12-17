@@ -70,7 +70,7 @@
             },
             {
                 "group": "Advanced Usage",
-                "pages": ["docs/advanced/overview"]
+                "pages": ["docs/advanced/overview", "docs/advanced/vite-build"]
             },
             {
                 "group": "API Reference",

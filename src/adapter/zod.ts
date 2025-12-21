@@ -103,8 +103,8 @@ export const RunStreamPayloadSchema = z
     .describe('Payload for creating a stateful run.');
 
 export const RunListQuerySchema = z.object({
-    limit: z.coerce.number().int().optional(),
-    offset: z.coerce.number().int().optional(),
+    limit: z.coerce.number().int().optional().default(10),
+    offset: z.coerce.number().int().optional().default(0),
     status: z.enum(['pending', 'running', 'error', 'success', 'timeout', 'interrupted']).optional(),
 });
 

@@ -4,6 +4,7 @@ import { BaseStreamQueueInterface } from '../../queue/stream_queue.js';
 /** 内存实现的消息队列，用于存储消息 */
 export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueueInterface {
     private data: EventMessage[] = [];
+
     async push(item: EventMessage): Promise<void> {
         const data = this.compressMessages ? ((await this.encodeData(item)) as unknown as EventMessage) : item;
         this.data.push(data);
@@ -87,5 +88,11 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
     cancel(): void {
         this.push(new CancelEventMessage());
         this.cancelSignal.abort('user cancel this run');
+    }
+    async copyToQueue(toId: string, ttl?: number): Promise<MemoryStreamQueue> {
+        const data = this.data;
+        const queue = new MemoryStreamQueue(toId, this.compressMessages, ttl ?? this.ttl);
+        queue.data = data;
+        return queue;
     }
 }

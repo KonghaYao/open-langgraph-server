@@ -9,6 +9,9 @@ import { createClient, RedisClientType } from 'redis';
 export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueueInterface {
     static redis: RedisClientType = createClient({ url: process.env.REDIS_URL! });
     static subscriberRedis: RedisClientType = createClient({ url: process.env.REDIS_URL! });
+    static isQueueExist(id: string): Promise<boolean> {
+        return this.redis.exists(`queue:${id}`).then((exists) => exists > 0);
+    }
     private redis: RedisClientType;
     private subscriberRedis: RedisClientType;
     private queueKey: string;
@@ -16,8 +19,8 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
     private isConnected = false;
     public cancelSignal: AbortController;
 
-    constructor(readonly id: string = 'default') {
-        super(id, true);
+    constructor(readonly id: string, readonly compressMessages: boolean = true, readonly ttl: number = 300) {
+        super(id, true, ttl);
         this.queueKey = `queue:${this.id}`;
         this.channelKey = `channel:${this.id}`;
         this.redis = RedisStreamQueue.redis;
@@ -42,10 +45,10 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
         const serializedData = Buffer.from(data);
 
         // 推送到队列
-        await this.redis.lPush(this.queueKey, serializedData);
+        await this.redis.rPush(this.queueKey, serializedData);
 
         // 设置队列 TTL 为 300 秒
-        await this.redis.expire(this.queueKey, 300);
+        await this.redis.expire(this.queueKey, this.ttl);
 
         // 发布到频道通知有新数据
         await this.redis.publish(this.channelKey, serializedData);
@@ -123,9 +126,8 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
 
         if (this.compressMessages) {
             return (await Promise.all(
-                data.map(async (item: string) => {
-                    const parsed = JSON.parse(item) as EventMessage;
-                    return (await this.decodeData(parsed as any)) as EventMessage;
+                data.map((item: string) => {
+                    return this.decodeData(item);
                 }),
             )) as EventMessage[];
         } else {
@@ -148,5 +150,11 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
     cancel(): void {
         this.push(new CancelEventMessage());
         this.cancelSignal.abort('user cancel this run');
+    }
+    async copyToQueue(toId: string, ttl?: number): Promise<RedisStreamQueue> {
+        const queue = new RedisStreamQueue(toId, this.compressMessages, ttl ?? this.ttl);
+        await this.redis.copy(this.queueKey, queue.queueKey);
+        await this.redis.expire(queue.queueKey, ttl ?? this.ttl);
+        return queue;
     }
 }

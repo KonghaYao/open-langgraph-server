@@ -120,8 +120,23 @@ export const createEndpoint = () => {
 
                 try {
                     // 获取 Redis 队列实例
-                    const queue = LangGraphGlobal.globalMessageQueue.getQueue(runId);
-
+                    const queue = await LangGraphGlobal.globalMessageQueue.getQueue(runId);
+                    const allData = await queue.getAll();
+                    for (const eventMessage of allData) {
+                        yield {
+                            id: eventMessage.id,
+                            event: eventMessage.event as unknown as StreamEvent,
+                            data: eventMessage.data,
+                        };
+                        // 如果是流结束信号，停止监听
+                        if (
+                            eventMessage.event === '__stream_end__' ||
+                            eventMessage.event === '__stream_error__' ||
+                            eventMessage.event === '__stream_cancel__'
+                        ) {
+                            return;
+                        }
+                    }
                     // 监听队列数据并转换格式
                     for await (const eventMessage of queue.onDataReceive()) {
                         // 检查是否被取消

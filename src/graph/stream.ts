@@ -105,6 +105,7 @@ export async function streamStateWithQueue(
                 if (getNameWithNs('values') === 'values') {
                     if (value?.__interrupt__) {
                         await threads.set(run.thread_id, {
+                            status: 'interrupted',
                             interrupts: value ? JSON.parse(serialiseAsDict(value)) : '',
                         });
                     } else {
@@ -154,7 +155,7 @@ export async function streamStateWithQueue(
  * @returns 数据流生成器
  */
 export async function* createStreamFromQueue(queueId: string): AsyncGenerator<{ event: string; data: unknown }> {
-    const queue = LangGraphGlobal.globalMessageQueue.getQueue(queueId);
+    const queue = await LangGraphGlobal.globalMessageQueue.getQueue(queueId);
     return queue.onDataReceive();
 }
 
@@ -226,8 +227,14 @@ export async function* streamState(
         await threads.set(threadId, { status: 'error' });
         // throw error;
     } finally {
+        const nowState = await threads.get(threadId);
         // 在完成后清理队列
-        await threads.set(threadId, { status: 'idle' });
+        if (nowState.status === 'interrupted') {
+            // 注意，interrupted 状态，直接拷贝一个需要恢复状态的队列即可
+            await LangGraphGlobal.globalMessageQueue.copyQueue(queueId, threadId, 30000);
+        } else {
+            await threads.set(threadId, { status: 'idle', interrupts: {} });
+        }
         LangGraphGlobal.globalMessageQueue.removeQueue(queueId);
     }
 }

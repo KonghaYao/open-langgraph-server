@@ -26,7 +26,7 @@ export class BaseStreamQueue extends EventEmitter<StreamQueueEvents<EventMessage
      * Constructor
      * @param compressMessages 是否压缩消息 / Whether to compress messages
      */
-    constructor(readonly id: string, readonly compressMessages: boolean = true) {
+    constructor(readonly id: string, readonly compressMessages: boolean = true, readonly ttl: number = 300) {
         super();
     }
 
@@ -82,7 +82,17 @@ export interface BaseStreamQueueInterface {
     cancelSignal: AbortController;
     /** 取消操作 / Cancel operation */
     cancel(): void;
+    /** 复制队列数据 / Copy queue data */
+    copyToQueue(toId: string, ttl?: number): Promise<BaseStreamQueueInterface>;
 }
+
+export type QueueConstructor<Q extends BaseStreamQueueInterface> = (new (
+    queueId: string,
+    compressMessages: boolean,
+    ttl?: number,
+) => Q) & {
+    isQueueExist?: (id: string) => Promise<boolean>;
+};
 
 /**
  * StreamQueue 管理器，通过 id 管理多个队列实例
@@ -94,7 +104,7 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
     /** 默认是否压缩消息 / Default compress messages setting */
     private defaultCompressMessages: boolean;
     /** 队列构造函数 / Queue constructor */
-    private queueConstructor: new (queueId: string) => Q;
+    private queueConstructor: QueueConstructor<Q>;
 
     /**
      * 构造函数
@@ -103,7 +113,7 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * @param options 配置选项 / Configuration options
      */
     constructor(
-        queueConstructor: new (id: string) => Q,
+        queueConstructor: QueueConstructor<Q>,
         options: {
             /** 默认是否压缩消息 / Default compress messages setting */
             defaultCompressMessages?: boolean;
@@ -120,9 +130,8 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * @param compressMessages 是否压缩消息 / Whether to compress messages
      * @returns 创建的队列实例 / Created queue instance
      */
-    createQueue(id: string, compressMessages?: boolean): Q {
-        const compress = compressMessages ?? this.defaultCompressMessages;
-        this.queues.set(id, new this.queueConstructor(id));
+    createQueue(id: string, ttl: number = 300): Q {
+        this.queues.set(id, new this.queueConstructor(id, this.defaultCompressMessages, ttl));
         return this.queues.get(id)!;
     }
 
@@ -133,10 +142,14 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * @param compressMessages 是否压缩消息，默认为构造函数中的默认值 / Whether to compress messages, defaults to constructor default
      * @returns StreamQueue 实例 / StreamQueue instance
      */
-    getQueue(id: string): Q {
+    async getQueue(id: string): Promise<Q> {
         const queue = this.queues.get(id);
         if (!queue) {
-            throw new Error(`Queue with id '${id}' does not exist`);
+            if (await this.queueConstructor?.isQueueExist?.(id)) {
+                return this.createQueue(id);
+            } else {
+                throw new Error(`Queue with id '${id}' does not exist`);
+            }
         }
         return queue;
     }
@@ -158,10 +171,9 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * Push data to queue with specified id
      * @param id 队列 ID / Queue ID
      * @param item 要推送的数据项 / Item to push
-     * @param compressMessages 是否压缩消息，默认为构造函数中的默认值 / Whether to compress messages, defaults to constructor default
      */
-    async pushToQueue(id: string, item: EventMessage, compressMessages?: boolean): Promise<void> {
-        const queue = this.getQueue(id);
+    async pushToQueue(id: string, item: EventMessage): Promise<void> {
+        const queue = await this.getQueue(id);
         await queue.push(item);
     }
 
@@ -233,5 +245,20 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
         for (const queue of this.queues.values()) {
             queue.clear();
         }
+    }
+
+    /**
+     * 复制队列数据
+     * Copy queue data
+     * @param fromId 源队列 ID / Source queue ID
+     * @param toId 目标队列 ID / Target queue ID
+     * @param ttl 生存时间（毫秒），在指定时间后删除目标队列 / Time to live (milliseconds), remove target queue after specified time
+     */
+    async copyQueue(fromId: string, toId: string, ttl?: number): Promise<BaseStreamQueueInterface> {
+        // 获取源队列数据
+        const sourceQueue = await this.getQueue(fromId);
+        const queue = await sourceQueue.copyToQueue(toId, ttl);
+        this.queues.set(toId, queue as Q);
+        return queue;
     }
 }

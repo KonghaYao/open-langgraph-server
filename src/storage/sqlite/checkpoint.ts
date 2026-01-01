@@ -102,7 +102,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
     static async fromConnStringAsync(connStringOrLocalPath: string): Promise<SqliteSaver> {
         let saver: SqliteSaver;
         /** @ts-ignore */
-        if (!globalThis.Bun) {
+        if (globalThis.Bun) {
             console.log('LG | Using BunWorkerDialect ' + connStringOrLocalPath);
             const { BunWorkerDialect } = await import('kysely-bun-worker');
             saver = new SqliteSaver(new BunWorkerDialect({ url: connStringOrLocalPath }));

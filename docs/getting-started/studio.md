@@ -11,7 +11,7 @@ Studio provides an interactive UI for testing and debugging your LangGraph appli
 **Important**: Your LangGraph server must be running on port 8123 before starting Studio. Make sure you've completed the [Installation guide](./index.md) and have your server running:
 
 ```bash
-bun run --port 8123 src/app.ts  # Your langgraph server should be running on http://localhost:8123
+src/app.ts  # Your langgraph server should be running on http://localhost:8123
 ```
 
 ## Installation
@@ -23,7 +23,7 @@ You can run Studio in two ways:
 Use npx to run Studio without installation:
 
 ```bash
-npx @langgraph-js/ui --port 8123
+npx @langgraph-js/ui
 ```
 
 ### Option 2: Install as dev dependency
@@ -37,7 +37,7 @@ pnpm add -D @langgraph-js/ui
 Then run it with:
 
 ```bash
-pnpm langgraph-ui --port 8123
+pnpm langgraph-ui
 ```
 
 ## Advanced Configuration

@@ -12,7 +12,7 @@
     "type": "module",
     "scripts": {
         "dev": "bun run --port 8123 test/hono.ts",
-        "dev:docs": "bunx --bun xyd-js",
+        "dev:docs": "bunx --bun xyd-js@0.1.0-alpha.5",
         "build": " vite build && tsc",
         "docs:build": "pnpx xyd-js build",
         "prepublish": "pnpm build"

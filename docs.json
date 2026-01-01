@@ -1,88 +1,176 @@
 {
+    "$schema": "./schema.json",
     "theme": {
         "name": "opener",
+        "logo": {
+            "light": "/logo.svg",
+            "dark": "/logo.svg",
+            "page": "docs/getting-started/overview",
+            "href": "https://open-langgraph-server.agent-aura.top"
+        },
         "favicon": "/logo.svg",
-        "banner": {
-            "content": "Open LangGraph Server Docs",
-            "label": "Open LangGraph Server Docs",
-            "icon": "sparkles"
+        "icons": {
+            "library": [
+                {
+                    "name": "lucide",
+                    "default": true
+                }
+            ]
+        },
+        "appearance": {},
+        "head": [],
+        "fonts": {
+            "body": {
+                "family": "Roboto"
+            }
         }
     },
+    "integrations": {
+        "editLink": {
+            "baseUrl": "https://github.com/KonghaYao/open-langgraph-server/edit/master",
+            "title": "Edit page",
+            "icon": "docs:github"
+        },
+
+        "search": {
+            "orama": true
+        },
+        ".apps": {
+            "githubStar": {
+                "title": "Star",
+                "label": "Show your support! Star us on GitHub ⭐️",
+                "href": "https://github.com/KonghaYao/open-langgraph-server",
+                "dataIcon": "octicon-star",
+                "dataSize": "large",
+                "dataShowCount": true,
+                "ariaLabel": "Star pure-graph on GitHub"
+            }
+        }
+    },
+    "seo": {
+        "domain": "https://open-langgraph-server.agent-aura.top"
+    },
     "navigation": {
+        "anchors": {
+            "header": [
+                {
+                    "title": "Examples",
+                    "href": "https://github.com/KonghaYao/open-langgraph-server"
+                },
+                {
+                    "title": "Feedback",
+                    "href": "https://github.com/KonghaYao/open-langgraph-server/discussions",
+                    "button": "primary"
+                },
+                {
+                    "title": "Github",
+                    "href": "https://github.com/KonghaYao/open-langgraph-server",
+                    "icon": "docs:github"
+                }
+            ],
+            "sidebar": {
+                "bottom": [
+                    {
+                        "href": "https://github.com/KonghaYao/open-langgraph-server",
+                        "icon": "docs:github",
+                        "title": "GitHub"
+                    }
+                ]
+            }
+        },
         "tabs": [
             {
-                "title": "Getting Started",
-                "page": "overview",
-                "href": "docs/getting-started/overview"
+                "title": "Guide",
+                "page": "docs/getting-started",
+                "icon": "book"
             },
             {
-                "title": "Core Concepts",
-                "page": "core-concepts",
-                "href": "docs/getting-started/architecture"
+                "title": "Frameworks",
+                "page": "docs/frameworks/fetch",
+                "icon": "puzzle"
             },
-
             {
-                "title": "Framework Integration",
-                "page": "frameworks",
-                "href": "docs/frameworks/fetch"
+                "title": "Storage",
+                "page": "docs/storage/overview",
+                "icon": "database"
             },
             {
                 "title": "Auth",
-                "page": "auth",
-                "href": "docs/auth/overview"
+                "page": "docs/auth/overview",
+                "icon": "shield"
             },
             {
-                "title": "API Reference",
-                "page": "api",
-                "href": "docs/api/overview"
+                "title": "API",
+                "page": "docs/api/overview",
+                "icon": "brackets"
             }
         ],
         "sidebar": [
             {
-                "group": "Getting Started",
+                "route": "docs",
                 "pages": [
-                    "docs/getting-started/overview",
-                    "docs/getting-started/architecture",
-                    "docs/getting-started/install",
-                    "docs/getting-started/project-structure",
-                    "docs/getting-started/studio"
-                ]
-            },
+                    {
+                        "group": "Introduction",
+                        "pages": ["docs/getting-started/overview", "docs/getting-started/architecture"]
+                    },
+                    {
+                        "group": "Setup",
+                        "pages": [
+                            "docs/getting-started/install",
+                            "docs/getting-started/project-structure",
+                            "docs/getting-started/studio"
+                        ]
+                    },
+                    {
+                        "group": "Migration",
+                        "pages": ["docs/migration-2.0"]
+                    },
 
-            {
-                "group": "Framework Integration",
-                "pages": ["docs/frameworks/fetch", "docs/frameworks/nextjs", "docs/frameworks/hono"]
-            },
-            {
-                "group": "Database",
-                "pages": [
-                    "docs/storage/overview",
-                    "docs/storage/memory",
-                    "docs/storage/sqlite",
-                    "docs/storage/postgres",
-                    "docs/storage/redis"
-                ]
-            },
+                    {
+                        "group": "Frameworks",
+                        "pages": ["docs/frameworks/fetch", "docs/frameworks/hono", "docs/frameworks/nextjs"]
+                    },
+                    {
+                        "group": "Frontend SDK",
+                        "pages": [
+                            "docs/frontend/overview",
+                            "docs/frontend/provider",
+                            "docs/frontend/use-chat",
+                            "docs/frontend/react",
+                            "docs/frontend/vue",
+                            "docs/frontend/solid",
+                            "docs/frontend/store"
+                        ]
+                    },
+                    {
+                        "group": "Database",
+                        "pages": [
+                            "docs/storage/overview",
+                            "docs/storage/memory",
+                            "docs/storage/sqlite",
+                            "docs/storage/postgres",
+                            "docs/storage/redis"
+                        ]
+                    },
+                    {
+                        "group": "Authentication",
+                        "pages": ["docs/auth/overview", "docs/auth/better-auth", "docs/auth/custom-auth"]
+                    },
 
-            {
-                "group": "Auth",
-                "pages": ["docs/auth/overview", "docs/auth/better-auth", "docs/auth/custom-auth"]
-            },
-            {
-                "group": "Advanced Usage",
-                "pages": ["docs/advanced/overview", "docs/advanced/vite-build"]
-            },
-            {
-                "group": "API Reference",
-                "pages": ["docs/api/overview"]
-            },
-            {
-                "group": "Examples",
-                "pages": ["docs/examples/nextjs-chat"]
-            },
-            {
-                "group": "Migration Guide",
-                "pages": ["docs/migration-2.0"]
+                    {
+                        "group": "Advanced Guides",
+                        "pages": ["docs/advanced/overview", "docs/advanced/vite-build"]
+                    },
+                    {
+                        "group": "Examples",
+                        "pages": ["docs/examples/nextjs-chat"]
+                    },
+
+                    {
+                        "group": "API Reference",
+                        "pages": ["docs/api/overview"]
+                    }
+                ]
             }
         ]
     },
@@ -91,8 +179,5 @@
             "source": "index",
             "destination": "docs/getting-started/overview"
         }
-    ],
-    "seo": {
-        "domain": "https://open-langgraph-server.agent-aura.top"
-    }
+    ]
 }

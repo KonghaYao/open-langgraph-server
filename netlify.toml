@@ -1,5 +1,5 @@
 [build]
-command = "npm i -g xyd-js && npm run build:docs"
+command = "pnpm run docs:build"
 publish = ".xyd/build/client"
 
 [[redirects]]

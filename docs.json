@@ -121,10 +121,6 @@
                             "docs/getting-started/studio"
                         ]
                     },
-                    {
-                        "group": "Migration",
-                        "pages": ["docs/migration-2.0"]
-                    },
 
                     {
                         "group": "Frameworks",

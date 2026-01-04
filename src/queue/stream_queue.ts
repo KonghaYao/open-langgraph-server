@@ -81,7 +81,7 @@ export interface BaseStreamQueueInterface {
     /** 取消信号控制器 / Cancel signal controller */
     cancelSignal: AbortController;
     /** 取消操作 / Cancel operation */
-    cancel(): void;
+    cancel(): Promise<void>;
     /** 复制队列数据 / Copy queue data */
     copyToQueue(toId: string, ttl?: number): Promise<BaseStreamQueueInterface>;
 }
@@ -159,10 +159,10 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * Cancel queue with specified id
      * @param id 队列 ID / Queue ID
      */
-    cancelQueue(id: string): void {
+    async cancelQueue(id: string): Promise<void> {
         const queue = this.queues.get(id);
         if (queue) {
-            queue.cancel();
+            await queue.cancel();
             this.removeQueue(id);
         }
     }

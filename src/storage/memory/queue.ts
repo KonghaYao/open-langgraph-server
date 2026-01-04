@@ -25,6 +25,12 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
         let queue: EventMessage[] = [];
         let pendingResolve: (() => void) | null = null;
         let isStreamEnded = false;
+        
+        // 检查是否已取消
+        if (this.cancelSignal.signal.aborted) {
+            return;
+        }
+
         const handleData = async (item: EventMessage) => {
             const data = this.compressMessages ? ((await this.decodeData(item as any)) as EventMessage) : item;
             queue.push(data);
@@ -43,7 +49,7 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
                 }, 300);
 
                 if (data.event === '__stream_cancel__') {
-                    this.cancel();
+                    await this.cancel();
                 }
             }
 
@@ -55,8 +61,18 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
         // todo 这个框架的事件监听的数据返回顺序有误
         this.on('dataChange', handleData as any);
 
+        // 监听取消信号
+        const abortHandler = () => {
+            isStreamEnded = true;
+            if (pendingResolve) {
+                pendingResolve();
+                pendingResolve = null;
+            }
+        };
+        this.cancelSignal.signal.addEventListener('abort', abortHandler);
+
         try {
-            while (!isStreamEnded) {
+            while (!isStreamEnded && !this.cancelSignal.signal.aborted) {
                 if (queue.length > 0) {
                     for (const item of queue) {
                         yield item;
@@ -70,6 +86,7 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
             }
         } finally {
             this.off('dataChange', handleData as any);
+            this.cancelSignal.signal.removeEventListener('abort', abortHandler);
         }
     }
 
@@ -85,9 +102,11 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
         this.data = [];
     }
     public cancelSignal = new AbortController();
-    cancel(): void {
-        this.push(new CancelEventMessage());
+    async cancel(): Promise<void> {
+        // First abort to stop any waiting generators
         this.cancelSignal.abort('user cancel this run');
+        // Then push the cancel message to signal other consumers
+        await this.push(new CancelEventMessage());
     }
     async copyToQueue(toId: string, ttl?: number): Promise<MemoryStreamQueue> {
         const data = this.data;

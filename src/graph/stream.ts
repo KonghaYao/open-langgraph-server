@@ -211,7 +211,7 @@ export async function* streamState(
         const queue = LangGraphGlobal.globalMessageQueue.createQueue(queueId);
         const state = queue.onDataReceive();
         streamStateWithQueue(threads, run, queue, payload, options).catch((error) => {
-            console.error('Queue task error:', error);
+            if (error.message !== 'user cancel this run') console.error('Queue task error:', error);
             // 如果生产者出错，向队列推送错误信号
             LangGraphGlobal.globalMessageQueue.pushToQueue(queueId, new StreamErrorEventMessage(error));
             // TODO 不知道这里需不需要错误处理

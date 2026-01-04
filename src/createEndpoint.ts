@@ -77,7 +77,7 @@ export const createEndpoint = () => {
                 return getThreads().listRuns(threadId, options);
             },
             async cancel(threadId: string, runId: string, wait?: boolean, action?: CancelAction): Promise<void> {
-                return LangGraphGlobal.globalMessageQueue.cancelQueue(runId);
+                return await LangGraphGlobal.globalMessageQueue.cancelQueue(runId);
             },
             async *stream(threadId: string, assistantId: string, payload: StreamInputData) {
                 payload.config = {

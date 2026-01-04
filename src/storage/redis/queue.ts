@@ -63,6 +63,12 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
         let queue: EventMessage[] = [];
         let pendingResolve: (() => void) | null = null;
         let isStreamEnded = false;
+        
+        // 检查是否已取消
+        if (this.cancelSignal.signal.aborted) {
+            return;
+        }
+
         const handleMessage = async (message: string) => {
             const data = (await this.decodeData(message)) as EventMessage;
             queue.push(data);
@@ -81,7 +87,7 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
                 }, 300);
 
                 if (data.event === '__stream_cancel__') {
-                    this.cancel();
+                    await this.cancel();
                 }
             }
 
@@ -96,8 +102,18 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
             handleMessage(message);
         });
 
+        // 监听取消信号
+        const abortHandler = () => {
+            isStreamEnded = true;
+            if (pendingResolve) {
+                pendingResolve();
+                pendingResolve = null;
+            }
+        };
+        this.cancelSignal.signal.addEventListener('abort', abortHandler);
+
         try {
-            while (!isStreamEnded) {
+            while (!isStreamEnded && !this.cancelSignal.signal.aborted) {
                 if (queue.length > 0) {
                     for (const item of queue) {
                         yield item;
@@ -111,6 +127,7 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
             }
         } finally {
             await this.subscriberRedis.unsubscribe(this.channelKey);
+            this.cancelSignal.signal.removeEventListener('abort', abortHandler);
         }
     }
 
@@ -147,9 +164,11 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
     /**
      * 取消操作
      */
-    cancel(): void {
-        this.push(new CancelEventMessage());
+    async cancel(): Promise<void> {
+        // First abort to stop any waiting generators
         this.cancelSignal.abort('user cancel this run');
+        // Then push the cancel message to signal other consumers
+        await this.push(new CancelEventMessage());
     }
     async copyToQueue(toId: string, ttl?: number): Promise<RedisStreamQueue> {
         const queue = new RedisStreamQueue(toId, this.compressMessages, ttl ?? this.ttl);

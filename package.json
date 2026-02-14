@@ -70,7 +70,7 @@
     },
     "devDependencies": {
         "@langchain/langgraph-sdk": "^1.0.0",
-        "@langchain/openai": "^1.0.0",
+        "@langchain/openai": "^1.2.1",
         "@langgraph-js/sdk": "^3.3.1",
         "@types/node": "^22.13.5",
         "@types/pg": "^8.15.5",

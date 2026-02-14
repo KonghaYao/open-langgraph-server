@@ -38,7 +38,7 @@ const interrupt_test = tool(
 export const graph = createStateEntrypoint({ name: 'test-entrypoint', stateSchema: State }, async (state, config) => {
     const agent = createAgent({
         model: new ChatOpenAI({
-            model: 'gpt-4o-mini',
+            model: 'mimo-v2-flash',
             useResponsesApi: false,
             tags: ['test'],
             metadata: {

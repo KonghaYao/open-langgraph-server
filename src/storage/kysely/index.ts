@@ -8,3 +8,4 @@ export { type DatabaseAdapter } from './adapter';
 export { PostgresAdapter } from './pg-adapter';
 export { SQLiteAdapter } from './sqlite-adapter';
 export { KyselyThreadsManager } from './threads';
+export { RemoteKyselyThreadsManager } from './remote-threads';

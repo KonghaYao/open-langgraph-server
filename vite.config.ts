@@ -10,6 +10,7 @@ export default {
                 'adapter/hono/index': 'src/adapter/hono/index.ts',
                 'adapter/nextjs/index': 'src/adapter/nextjs/index.ts',
                 'adapter/fetch/index': 'src/adapter/fetch/index.ts',
+                'remote/index': 'src/storage/remote/server.ts',
             },
             formats: ['es'],
         },

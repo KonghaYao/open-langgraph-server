@@ -27,7 +27,7 @@ export const createCheckPointer = async () => {
         }
     }
 
-    if (process.env.DATABASE_URL) {
+    if (process.env.DATABASE_URL && getDatabaseType(process.env.DATABASE_URL) === 'postgres') {
         console.debug('LG | Using postgres as checkpoint');
         const { createPGCheckpoint } = await import('./pg/checkpoint');
         return createPGCheckpoint();
@@ -63,16 +63,43 @@ export const createMessageQueue = async () => {
     return new StreamQueueManager(q);
 };
 
+/**
+ * 检测 DATABASE_URL 类型
+ */
+function getDatabaseType(databaseUrl: string): 'postgres' | 'remote' {
+    const url = databaseUrl.toLowerCase();
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return 'remote';
+    }
+    return 'postgres';
+}
+
 export const createThreadManager = async (config: { checkpointer?: SqliteSaverType | PostgresSaver }) => {
-    if (process.env.DATABASE_URL && config.checkpointer) {
-        console.debug('LG | Using PostgreSQL ThreadsManager');
-        const { PostgresAdapter } = await import('./kysely/pg-adapter');
-        const pool = (config.checkpointer as PostgresSaver as any).pool;
-        const threadsManager = new KyselyThreadsManager(new PostgresAdapter(pool));
-        if (process.env.DATABASE_INIT === 'true') {
-            await threadsManager.setup();
+    if (process.env.DATABASE_URL) {
+        const dbType = getDatabaseType(process.env.DATABASE_URL);
+
+        if (dbType === 'remote') {
+            // 使用远程 PG 适配器
+            console.debug('LG | Using Remote PostgreSQL ThreadsManager');
+            const { RemoteKyselyThreadsManager } = await import('./kysely/remote-threads');
+            const threadsManager = new RemoteKyselyThreadsManager(process.env.DATABASE_URL);
+            if (process.env.DATABASE_INIT === 'true') {
+                await threadsManager.setup();
+            }
+            return threadsManager;
+        } else {
+            // 使用本地 PG 适配器（现有逻辑）
+            if (config.checkpointer) {
+                console.debug('LG | Using PostgreSQL ThreadsManager');
+                const { PostgresAdapter } = await import('./kysely/pg-adapter');
+                const pool = (config.checkpointer as PostgresSaver as any).pool;
+                const threadsManager = new KyselyThreadsManager(new PostgresAdapter(pool));
+                if (process.env.DATABASE_INIT === 'true') {
+                    await threadsManager.setup();
+                }
+                return threadsManager;
+            }
         }
-        return threadsManager;
     }
     if (process.env.SQLITE_DATABASE_URI && config.checkpointer) {
         console.debug('LG | Using SQLite ThreadsManager');

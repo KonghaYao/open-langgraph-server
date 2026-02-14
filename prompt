@@ -1,8 +1,8 @@
-'/Users/konghayao/code/ai/pure-graph/test/api/sdk.test.ts' 
-现在我已经打好了基础,我们现在开始完善测试文档, 我们的 openapi 
-文档在这里,但是文档巨大,当你需要看哪章就看哪些. 现在我们先实现 
-'/Users/konghayao/code/ai/pure-graph/protocal/api-20260214.yaml' 
-
-Assistants 
-
-的测试用例,如果某些没有通过,请记录到一个文件中,然后不用修复
+'/Users/konghayao/code/ai/pure-graph/test/api/sdk.test.ts'
+现在我已经打好了基础,我们现在开始完善测试文档, 我们的
+openapi
+文档在这里,但是文档巨大,当你需要看哪章就看哪些.
+现在我们先实现
+'/Users/konghayao/code/ai/pure-graph/protocal/api-20260214.yaml'
+Threads Run
+的测试用例, 然后去看看某些没有实现的

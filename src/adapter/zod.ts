@@ -200,3 +200,83 @@ export const ThreadPatchSchema = z
         values: z.any().optional(),
     })
     .describe('Payload for patching a thread.');
+
+export const RunCreateSchema = z
+    .object({
+        assistant_id: z.string(),
+        input: z.any().optional(),
+        command: CommandSchema.optional(),
+        metadata: MetadataSchema.optional(),
+        config: AssistantConfig.optional(),
+        webhook: z.string().optional(),
+        interrupt_before: z.union([z.literal('*'), z.array(z.string())]).optional(),
+        interrupt_after: z.union([z.literal('*'), z.array(z.string())]).optional(),
+        on_disconnect: z.enum(['cancel', 'continue']).optional().default('continue'),
+        multitask_strategy: z.enum(['reject', 'rollback', 'interrupt', 'enqueue']).optional(),
+        stream_mode: z
+            .array(z.enum(['values', 'messages', 'messages-tuple', 'updates', 'events', 'debug', 'custom']))
+            .optional(),
+        stream_subgraphs: z.boolean().optional(),
+        stream_resumable: z.boolean().optional(),
+        after_seconds: z.number().optional(),
+        if_not_exists: z.enum(['create', 'reject']).optional(),
+        on_completion: z.enum(['complete', 'continue']).optional(),
+        feedback_keys: z.array(z.string()).optional(),
+        langsmith_tracer: z.unknown().optional(),
+    })
+    .describe('Payload for creating a run (background/wait).');
+
+export const RunWaitQuerySchema = z.object({
+    cancel_on_disconnect: z.coerce.boolean().optional().default(false),
+});
+
+export const RunJoinQuerySchema = z.object({
+    cancel_on_disconnect: z.coerce.boolean().optional().default(false),
+});
+
+// Stateless Runs 相关的 schema
+export const RunCreateStatelessSchema = z
+    .object({
+        assistant_id: z.string().describe('The assistant ID or graph name to run.'),
+        input: z.any().optional().describe('The input to the graph.'),
+        command: CommandSchema.optional(),
+        metadata: MetadataSchema.optional().describe('Metadata to assign to the run.'),
+        config: AssistantConfig.optional(),
+        context: z.object({}).catchall(z.any()).optional().describe('Static context added to the assistant.'),
+        webhook: z.string().optional(),
+        interrupt_before: z.union([z.literal('*'), z.array(z.string())]).optional(),
+        interrupt_after: z.union([z.literal('*'), z.array(z.string())]).optional(),
+        stream_mode: z
+            .union([
+                z.enum(['values', 'messages', 'messages-tuple', 'tasks', 'checkpoints', 'updates', 'events', 'debug', 'custom']),
+                z.array(z.enum(['values', 'messages', 'messages-tuple', 'tasks', 'checkpoints', 'updates', 'events', 'debug', 'custom'])),
+            ])
+            .optional()
+            .default(['values']),
+        feedback_keys: z.array(z.string()).optional(),
+        stream_subgraphs: z.boolean().optional().default(false),
+        stream_resumable: z.boolean().optional().default(false),
+    })
+    .describe('Payload for creating a stateless run.');
+
+export const RunBatchCreateSchema = z
+    .array(RunCreateStatelessSchema)
+    .min(1)
+    .describe('Payload for creating a batch of stateless runs.');
+
+export const RunsCancelQuerySchema = z.object({
+    action: z.enum(['interrupt', 'rollback']).optional().default('interrupt').describe('Action to take when cancelling the run.'),
+    wait: z.coerce.boolean().optional().default(false),
+});
+
+export const RunsCancelSchema = z.union([
+    z.object({
+        status: z.enum(['pending', 'running', 'all']).describe('Filter runs by status to cancel.'),
+    }),
+    z.object({
+        thread_id: z.string().describe('The ID of the thread containing runs to cancel.'),
+    }),
+    z.object({
+        run_ids: z.array(z.string()).min(1).describe('List of run IDs to cancel.'),
+    }),
+]);

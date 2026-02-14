@@ -29,6 +29,8 @@ import {
     joinThreadStream,
 } from './threads';
 import { streamRun, joinRunStream, listRuns, cancelRun } from './runs';
+import { createRun, waitRun, getRun, deleteRun, joinRun } from './runs-extended';
+import { createStatelessRun, streamStatelessRun, waitStatelessRun, createBatchRuns, cancelRuns } from './runs-stateless';
 import { errorResponse } from './utils';
 import type { LangGraphServerContext } from './context';
 
@@ -172,25 +174,79 @@ const routes: Route[] = [
     },
 
     // Runs
+    // POST requests must come before GET requests with same path prefix
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/runs$/,
+        handler: createRun,
+    },
     {
         method: 'POST',
         pattern: /^\/threads\/[^/]+\/runs\/stream$/,
         handler: streamRun,
     },
     {
-        method: 'GET',
-        pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/stream$/,
-        handler: joinRunStream,
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/runs\/wait$/,
+        handler: waitRun,
     },
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/cancel$/,
+        handler: cancelRun,
+    },
+    // GET requests
     {
         method: 'GET',
         pattern: /^\/threads\/[^/]+\/runs$/,
         handler: listRuns,
     },
     {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/runs\/[^/]+$/,
+        handler: getRun,
+    },
+    {
+        method: 'DELETE',
+        pattern: /^\/threads\/[^/]+\/runs\/[^/]+$/,
+        handler: deleteRun,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/join$/,
+        handler: joinRun,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/stream$/,
+        handler: joinRunStream,
+    },
+
+    // Stateless Runs
+    {
         method: 'POST',
-        pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/cancel$/,
-        handler: cancelRun,
+        pattern: /^\/runs$/,
+        handler: createStatelessRun,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/runs\/stream$/,
+        handler: streamStatelessRun,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/runs\/wait$/,
+        handler: waitStatelessRun,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/runs\/batch$/,
+        handler: createBatchRuns,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/runs\/cancel$/,
+        handler: cancelRuns,
     },
 ];
 
@@ -242,3 +298,5 @@ export async function handleRequest(req: Request, context: LangGraphServerContex
 export { searchAssistants, countAssistants, getAssistant, deleteAssistant, patchAssistant, getAssistantGraph, getAssistantSubgraphs, getAssistantSubgraphsByNamespace, getAssistantSchemas, getAssistantVersions, setLatestAssistantVersion, createAssistant } from './assistants';
 export { createThread, searchThreads, getThread, deleteThread, patchThread, countThreads, getThreadState, updateThreadState, getThreadStateAtCheckpoint, getThreadHistory, getThreadHistoryPost, copyThread, joinThreadStream } from './threads';
 export { streamRun, joinRunStream, listRuns, cancelRun } from './runs';
+export { createRun, waitRun, getRun, deleteRun, joinRun } from './runs-extended';
+export { createStatelessRun, streamStatelessRun, waitStatelessRun, createBatchRuns, cancelRuns } from './runs-stateless';

@@ -145,7 +145,8 @@
                             "docs/storage/memory",
                             "docs/storage/sqlite",
                             "docs/storage/postgres",
-                            "docs/storage/redis"
+                            "docs/storage/redis",
+                            "docs/storage/remote"
                         ]
                     },
                     {

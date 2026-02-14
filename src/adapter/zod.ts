@@ -55,12 +55,12 @@ export const PaginationQuerySchema = z.object({
 });
 
 export const ThreadIdParamSchema = z.object({
-    thread_id: z.string().uuid(),
+    thread_id: z.string(),
 });
 
 export const RunIdParamSchema = z.object({
-    thread_id: z.string().uuid(),
-    run_id: z.string().uuid(),
+    thread_id: z.string(),
+    run_id: z.string(),
 });
 
 // Assistants 相关的 schema
@@ -148,7 +148,7 @@ export const RunJoinStreamQuerySchema = z.object({
 // Threads 相关的 schema
 export const ThreadCreatePayloadSchema = z
     .object({
-        thread_id: z.string().uuid().describe('The ID of thread. If not provided, an ID is generated.').optional(),
+        thread_id: z.string().describe('The ID of thread. If not provided, an ID is generated.').optional(),
         metadata: MetadataSchema.optional(),
         if_exists: z.union([z.literal('raise'), z.literal('do_nothing')]).optional(),
     })
@@ -192,3 +192,11 @@ export const ThreadStateUpdate = z
         // checkpoint: CheckpointSchema.nullish(),
     })
     .describe('Payload for adding state to a thread.');
+
+export const ThreadPatchSchema = z
+    .object({
+        metadata: MetadataSchema.optional(),
+        status: z.enum(['idle', 'busy', 'interrupted', 'error']).optional(),
+        values: z.any().optional(),
+    })
+    .describe('Payload for patching a thread.');

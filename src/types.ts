@@ -10,6 +10,7 @@ import {
     ThreadStatus,
     Checkpoint,
     Config,
+    ThreadState,
 } from '@langchain/langgraph-sdk';
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
 import { EventMessage } from './queue/event_message';
@@ -61,7 +62,23 @@ export interface ILangGraphClient<TStateType = unknown> {
             sortBy?: AssistantSortBy;
             sortOrder?: SortOrder;
         }): Promise<Assistant[]>;
+        count(query?: { graphId?: string; metadata?: Metadata }): Promise<number>;
+        get(assistantId: string): Promise<Assistant>;
+        delete(assistantId: string): Promise<void>;
+        update(assistantId: string, updates: Partial<Pick<Assistant, 'name' | 'description' | 'metadata' | 'config'>>): Promise<Assistant>;
         getGraph(assistantId: string, options?: { xray?: boolean | number }): Promise<AssistantGraph>;
+        getSchemas(assistantId: string): Promise<{ graph_id: string; state_schema: any }>;
+        getVersions(assistantId: string, options?: { limit?: number; offset?: number }): Promise<Assistant[]>;
+        setLatest(assistantId: string, version: number): Promise<Assistant>;
+        create(params: {
+            assistant_id?: string;
+            graph_id: string;
+            name?: string;
+            description?: string;
+            metadata?: Metadata;
+            config?: any;
+            if_exists?: 'raise' | 'do_nothing';
+        }): Promise<Assistant>;
     };
     threads: {
         create(payload?: {
@@ -95,6 +112,20 @@ export interface ILangGraphClient<TStateType = unknown> {
         get(threadId: string): Promise<Thread<TStateType>>;
         delete(threadId: string): Promise<void>;
         updateState(threadId: string, thread: Partial<Thread<TStateType>>): Promise<Pick<Config, 'configurable'>>;
+        count(query?: {
+            ids?: string[];
+            metadata?: Metadata;
+            status?: ThreadStatus;
+            values?: unknown;
+        }): Promise<number>;
+        patch(threadId: string, updates: Partial<Omit<Thread<TStateType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<TStateType>>;
+        getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState<TStateType>>;
+        getStateHistory(threadId: string, options?: {
+            limit?: number;
+            before?: string;
+            filter?: { source?: string; step?: number };
+        }): Promise<ThreadState<TStateType>[]>;
+        copy(threadId: string): Promise<Thread<TStateType>>;
     };
     runs: {
         list(

@@ -27,7 +27,7 @@ export const AssistantEndpoint: ILangGraphClient['assistants'] = {
                     description: '',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
-                } as Assistant),
+                }) as Assistant,
         );
 
         // Filter by graphId
@@ -39,7 +39,7 @@ export const AssistantEndpoint: ILangGraphClient['assistants'] = {
         if (query?.metadata && Object.keys(query.metadata).length > 0) {
             results = results.filter((assistant) => {
                 return Object.entries(query.metadata!).every(([key, value]) => {
-                    return assistant.metadata[key] === value;
+                    return assistant.metadata && assistant.metadata[key] === value;
                 });
             });
         }

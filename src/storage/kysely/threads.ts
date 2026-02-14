@@ -1,6 +1,6 @@
 import { Kysely } from 'kysely';
 import { BaseThreadsManager } from '../../threads/index.js';
-import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadStatus } from '@langgraph-js/sdk';
+import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
 import { Database } from './types';
 import { DatabaseAdapter } from './adapter';
@@ -255,6 +255,14 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         await this.db.updateTable('threads').set(updates).where('thread_id', '=', threadId).execute();
     }
 
+    async delete(threadId: string): Promise<void> {
+        const result = await this.db.deleteFrom('threads').where('thread_id', '=', threadId).executeTakeFirst();
+
+        if (result.numDeletedRows === 0) {
+            throw new Error(`Thread with ID ${threadId} not found.`);
+        }
+    }
+
     async updateState(threadId: string, thread: Partial<Thread<ValuesType>>): Promise<Pick<Config, 'configurable'>> {
         // 获取线程信息
         const targetThread = await this.get(threadId);
@@ -281,14 +289,6 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         await this.set(threadId, { values: JSON.parse(serialiseAsDict(graphState.values)) as ValuesType });
 
         return nextConfig;
-    }
-
-    async delete(threadId: string): Promise<void> {
-        const result = await this.db.deleteFrom('threads').where('thread_id', '=', threadId).executeTakeFirst();
-
-        if (result.numDeletedRows === 0n) {
-            throw new Error(`Thread with ID ${threadId} not found.`);
-        }
     }
 
     async createRun(threadId: string, assistantId: string, payload?: { metadata?: Metadata }): Promise<Run> {
@@ -387,5 +387,225 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         }
 
         await this.db.updateTable('runs').set(updates).where('run_id', '=', runId).execute();
+    }
+
+    // New methods for Threads API
+
+    async count(query?: {
+        ids?: string[];
+        metadata?: Metadata;
+        status?: ThreadStatus;
+        values?: ValuesType;
+    }): Promise<number> {
+        const threads = await this.search(query);
+        return threads.length;
+    }
+
+    async patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>> {
+        // 获取当前线程
+        const existing = await this.db
+            .selectFrom('threads')
+            .selectAll()
+            .where('thread_id', '=', threadId)
+            .executeTakeFirst();
+
+        if (!existing) {
+            throw new Error(`Thread with ID ${threadId} not found.`);
+        }
+
+        // 构建更新对象，合并 metadata
+        const patchUpdates: any = {
+            updated_at: this.adapter.dateToDb(new Date()),
+        };
+
+        if (updates.metadata !== undefined) {
+            const existingMetadata = this.adapter.dbToJson(existing.metadata) || {};
+            patchUpdates.metadata = this.adapter.jsonToDb({ ...existingMetadata, ...updates.metadata });
+        }
+
+        if (updates.status !== undefined) {
+            patchUpdates.status = updates.status;
+        }
+
+        if (updates.values !== undefined) {
+            patchUpdates.values = updates.values ? this.adapter.jsonToDb(updates.values) : null;
+        }
+
+        if (updates.interrupts !== undefined) {
+            patchUpdates.interrupts = this.adapter.jsonToDb(updates.interrupts);
+        }
+
+        await this.db.updateTable('threads').set(patchUpdates).where('thread_id', '=', threadId).execute();
+
+        // 返回更新后的线程
+        return await this.get(threadId);
+    }
+
+    async getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState> {
+        const thread = await this.get(threadId);
+
+        if (options?.checkpointId) {
+            // Get state at specific checkpoint
+            const checkpoint = await this.db
+                .selectFrom('checkpoints')
+                .selectAll()
+                .where('checkpoint_id', '=', options.checkpointId)
+                .where('thread_id', '=', threadId)
+                .executeTakeFirst();
+
+            if (!checkpoint) {
+                throw new Error(`Checkpoint with ID ${options.checkpointId} not found for thread ${threadId}`);
+            }
+
+            return {
+                values: this.adapter.dbToJson(checkpoint.values),
+                next: this.adapter.dbToJson(checkpoint.next),
+                metadata: this.adapter.dbToJson(checkpoint.metadata),
+                checkpoint: {
+                    id: checkpoint.checkpoint_id,
+                    thread_id: threadId,
+                    parent_checkpoint_id: null,
+                    checkpoint_ns: '',
+                    metadata: this.adapter.dbToJson(checkpoint.metadata),
+                    created_at: this.adapter.dbToDate(checkpoint.created_at).toISOString(),
+                },
+                created_at: this.adapter.dbToDate(checkpoint.created_at).toISOString(),
+                parent_checkpoint: null,
+                tasks: [],
+            };
+        }
+
+        // Get latest state
+        const state: ThreadState = {
+            values: thread.values || {},
+            next: [],
+            metadata: thread.metadata,
+            checkpoint: {
+                id: v7(),
+                thread_id: threadId,
+                parent_checkpoint_id: null,
+                checkpoint_ns: '',
+                metadata: thread.metadata,
+                created_at: thread.created_at,
+            },
+            created_at: thread.created_at,
+            parent_checkpoint: null,
+            tasks: [],
+        };
+
+        return state;
+    }
+
+    async getStateHistory(threadId: string, options?: {
+        limit?: number;
+        before?: string;
+        filter?: { source?: string; step?: number };
+    }): Promise<ThreadState[]> {
+        let queryBuilder = this.db
+            .selectFrom('checkpoints')
+            .selectAll()
+            .where('thread_id', '=', threadId)
+            .orderBy('created_at', 'asc');
+
+        const checkpoints = await queryBuilder.execute();
+
+        let history: ThreadState[] = checkpoints.map(cp => ({
+            values: this.adapter.dbToJson(cp.values),
+            next: this.adapter.dbToJson(cp.next),
+            metadata: this.adapter.dbToJson(cp.metadata),
+            checkpoint: {
+                id: cp.checkpoint_id,
+                thread_id: threadId,
+                parent_checkpoint_id: null,
+                checkpoint_ns: '',
+                metadata: this.adapter.dbToJson(cp.metadata),
+                created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
+            },
+            created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
+            parent_checkpoint: null,
+            tasks: [],
+        }));
+
+        // Filter by 'before' checkpoint ID
+        if (options?.before) {
+            const beforeIndex = checkpoints.findIndex(c => c.checkpoint_id === options.before);
+            if (beforeIndex !== -1) {
+                history = history.slice(beforeIndex + 1);
+            }
+        }
+
+        // Apply limit
+        if (options?.limit) {
+            history = history.slice(0, options.limit);
+        }
+
+        return history;
+    }
+
+    async copy(threadId: string): Promise<Thread<ValuesType>> {
+        const originalThread = await this.get(threadId);
+
+        // Create new thread
+        const newThreadId = v7();
+        const now = new Date();
+
+        await this.db
+            .insertInto('threads')
+            .values({
+                thread_id: newThreadId,
+                created_at: this.adapter.dateToDb(now) as any,
+                updated_at: this.adapter.dateToDb(now) as any,
+                metadata: this.adapter.jsonToDb(originalThread.metadata) as any,
+                status: originalThread.status,
+                values: originalThread.values ? this.adapter.jsonToDb(originalThread.values) as any : null as any,
+                interrupts: this.adapter.jsonToDb(originalThread.interrupts) as any,
+            })
+            .execute();
+
+        // Copy checkpoints
+        const checkpoints = await this.db
+            .selectFrom('checkpoints')
+            .selectAll()
+            .where('thread_id', '=', threadId)
+            .orderBy('created_at', 'asc')
+            .execute();
+
+        for (const cp of checkpoints) {
+            await this.db
+                .insertInto('checkpoints')
+                .values({
+                    checkpoint_id: v7(),
+                    thread_id: newThreadId,
+                    values: cp.values,
+                    next: cp.next,
+                    config: cp.config,
+                    created_at: cp.created_at,
+                    metadata: cp.metadata,
+                })
+                .execute();
+        }
+
+        return {
+            ...originalThread,
+            thread_id: newThreadId,
+            created_at: now.toISOString(),
+            updated_at: now.toISOString(),
+        };
+    }
+
+    // Helper method to save checkpoint (used internally)
+    private async saveCheckpoint(threadId: string, values: any, next: string[], config: Config, metadata?: Metadata): Promise<void> {
+        await this.db
+            .insertInto('checkpoints')
+            .values({
+                checkpoint_id: v7(),
+                thread_id: threadId,
+                values: this.adapter.jsonToDb(values) as any,
+                next: this.adapter.jsonToDb(next) as any,
+                config: this.adapter.jsonToDb(config) as any,
+                created_at: this.adapter.dateToDb(new Date()) as any,
+                metadata: this.adapter.jsonToDb(metadata || {}) as any,
+            })
+            .execute();
     }
 }

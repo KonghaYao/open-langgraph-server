@@ -13,8 +13,22 @@ import {
     setLatestAssistantVersion,
     createAssistant,
 } from './assistants';
-import { createThread, searchThreads, getThread, deleteThread } from './threads';
-import { streamRun, joinRunStream, listRuns, cancelRun, updateThreadState } from './runs';
+import {
+    createThread,
+    searchThreads,
+    getThread,
+    deleteThread,
+    patchThread,
+    countThreads,
+    getThreadState,
+    updateThreadState,
+    getThreadStateAtCheckpoint,
+    getThreadHistory,
+    getThreadHistoryPost,
+    copyThread,
+    joinThreadStream,
+} from './threads';
+import { streamRun, joinRunStream, listRuns, cancelRun } from './runs';
 import { errorResponse } from './utils';
 import type { LangGraphServerContext } from './context';
 
@@ -102,14 +116,59 @@ const routes: Route[] = [
         handler: searchThreads,
     },
     {
+        method: 'POST',
+        pattern: /^\/threads\/count$/,
+        handler: countThreads,
+    },
+    {
         method: 'GET',
         pattern: /^\/threads\/[^/]+$/,
         handler: getThread,
     },
     {
+        method: 'PATCH',
+        pattern: /^\/threads\/[^/]+$/,
+        handler: patchThread,
+    },
+    {
         method: 'DELETE',
         pattern: /^\/threads\/[^/]+$/,
         handler: deleteThread,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/state$/,
+        handler: getThreadState,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/state$/,
+        handler: updateThreadState,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/state\/checkpoint$/,
+        handler: getThreadStateAtCheckpoint,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/history$/,
+        handler: getThreadHistory,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/history$/,
+        handler: getThreadHistoryPost,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/threads\/[^/]+\/copy$/,
+        handler: copyThread,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/threads\/[^/]+\/stream$/,
+        handler: joinThreadStream,
     },
 
     // Runs
@@ -132,11 +191,6 @@ const routes: Route[] = [
         method: 'POST',
         pattern: /^\/threads\/[^/]+\/runs\/[^/]+\/cancel$/,
         handler: cancelRun,
-    },
-    {
-        method: 'POST',
-        pattern: /^\/threads\/[^/]+\/state$/,
-        handler: updateThreadState,
     },
 ];
 
@@ -184,7 +238,7 @@ export async function handleRequest(req: Request, context: LangGraphServerContex
     }
 }
 
-// 导出所有处理函数供直接使用
-export * from './assistants';
-export * from './threads';
-export * from './runs';
+// Export all functions without conflict
+export { searchAssistants, countAssistants, getAssistant, deleteAssistant, patchAssistant, getAssistantGraph, getAssistantSubgraphs, getAssistantSubgraphsByNamespace, getAssistantSchemas, getAssistantVersions, setLatestAssistantVersion, createAssistant } from './assistants';
+export { createThread, searchThreads, getThread, deleteThread, patchThread, countThreads, getThreadState, updateThreadState, getThreadStateAtCheckpoint, getThreadHistory, getThreadHistoryPost, copyThread, joinThreadStream } from './threads';
+export { streamRun, joinRunStream, listRuns, cancelRun } from './runs';

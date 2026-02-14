@@ -6,10 +6,8 @@ import {
     RunListQuerySchema,
     RunCancelQuerySchema,
     RunJoinStreamQuerySchema,
-    ThreadStateUpdate,
 } from '../zod';
 import { serialiseAsDict } from '../../graph/stream';
-import z from 'zod';
 import camelcaseKeys from 'camelcase-keys';
 import {
     parsePathParams,
@@ -149,25 +147,6 @@ export async function cancelRun(req: Request, context: LangGraphServerContext): 
         }
 
         return new Response(null, { status: wait ? 204 : 202 });
-    } catch (error) {
-        return errorResponse(error);
-    }
-}
-
-/**
- * POST /threads/:thread_id/state
- */
-export async function updateThreadState(req: Request, context: LangGraphServerContext): Promise<Response> {
-    try {
-        const params = parsePathParams(req.url, '/threads/:thread_id/state');
-        const { thread_id } = validate(z.object({ thread_id: z.string().uuid() }), params);
-
-        const body = await req.json();
-        const payload = validate(ThreadStateUpdate, body);
-
-        const inserted = await client.threads.updateState(thread_id, payload);
-
-        return jsonResponse(inserted);
     } catch (error) {
         return errorResponse(error);
     }

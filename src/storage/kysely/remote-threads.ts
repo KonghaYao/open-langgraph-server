@@ -9,6 +9,7 @@ import {
     OnConflictBehavior,
     Run,
     Thread,
+    ThreadState,
 } from '@langgraph-js/sdk';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
 import { remoteGet, remotePost, remotePut, remoteDelete } from '../remote/fetch';
@@ -61,7 +62,7 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
         status?: any;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
-        values?: unknown;
+        values?: ValuesType;
         select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
         /**
          * @deprecated Use `select` parameter instead for fine-grained field control
@@ -175,5 +176,89 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
      */
     async updateRun(runId: string, run: Partial<Run>): Promise<void> {
         await remotePut(`${this.serverUrl}/runs/${runId}`, run);
+    }
+
+    // New methods for Threads API
+
+    /**
+     * 计算线程数量
+     */
+    async count(query?: {
+        ids?: string[];
+        metadata?: Metadata;
+        status?: any;
+        values?: ValuesType;
+    }): Promise<number> {
+        const params: Record<string, string> = {};
+
+        if (query?.ids !== undefined && query.ids.length > 0) {
+            params.ids = JSON.stringify(query.ids);
+        }
+        if (query?.metadata !== undefined) {
+            params.metadata = JSON.stringify(query.metadata);
+        }
+        if (query?.status !== undefined) {
+            params.status = query.status;
+        }
+        if (query?.values !== undefined) {
+            params.values = JSON.stringify(query.values);
+        }
+
+        const response = await remoteGet<number>(`${this.serverUrl}/threads/count`, params);
+        return response.data as number;
+    }
+
+    /**
+     * 更新线程元数据
+     */
+    async patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>> {
+        const response = await remotePost<Thread<ValuesType>>(`${this.serverUrl}/threads/${threadId}`, updates);
+        return response.data as Thread<ValuesType>;
+    }
+
+    /**
+     * 获取线程状态
+     */
+    async getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState> {
+        const params: Record<string, boolean> = {};
+
+        if (options?.subgraphs !== undefined) {
+            params.subgraphs = options.subgraphs;
+        }
+        if (options?.checkpointId !== undefined) {
+            params.checkpointId = options.checkpointId;
+        }
+
+        const response = await remotePost<ThreadState>(`${this.serverUrl}/threads/${threadId}/state`, params);
+        return response.data as ThreadState;
+    }
+
+    /**
+     * 获取线程历史
+     */
+    async getStateHistory(threadId: string, options?: {
+        limit?: number;
+        before?: string;
+        filter?: { source?: string; step?: number };
+    }): Promise<ThreadState[]> {
+        const params: Record<string, number | string> = {};
+
+        if (options?.limit !== undefined) {
+            params.limit = options.limit;
+        }
+        if (options?.before !== undefined) {
+            params.before = options.before;
+        }
+
+        const response = await remotePost<ThreadState[]>(`${this.serverUrl}/threads/${threadId}/history`, params);
+        return response.data as ThreadState[];
+    }
+
+    /**
+     * 复制线程
+     */
+    async copy(threadId: string): Promise<Thread<ValuesType>> {
+        const response = await remotePost<Thread<ValuesType>>(`${this.serverUrl}/threads/${threadId}/copy`);
+        return response.data as Thread<ValuesType>;
     }
 }

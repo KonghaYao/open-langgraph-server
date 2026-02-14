@@ -1,4 +1,4 @@
-import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadStatus } from '@langgraph-js/sdk';
+import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
 import { RunStatus, SortOrder, ThreadSortBy } from '../types';
 
 export interface BaseThreadsManager<ValuesType = unknown> {
@@ -34,4 +34,18 @@ export interface BaseThreadsManager<ValuesType = unknown> {
     createRun(threadId: string, assistantId: string, payload?: { metadata?: Metadata }): Promise<Run>;
     listRuns(threadId: string, options?: { limit?: number; offset?: number; status?: RunStatus }): Promise<Run[]>;
     updateRun(runId: string, run: Partial<Run>): Promise<void>;
+    count(query?: {
+        ids?: string[];
+        metadata?: Metadata;
+        status?: ThreadStatus;
+        values?: ValuesType;
+    }): Promise<number>;
+    patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>>;
+    getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState>;
+    getStateHistory(threadId: string, options?: {
+        limit?: number;
+        before?: string;
+        filter?: { source?: string; step?: number };
+    }): Promise<ThreadState[]>;
+    copy(threadId: string): Promise<Thread<ValuesType>>;
 }

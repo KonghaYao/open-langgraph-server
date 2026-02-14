@@ -13,6 +13,16 @@ export interface ThreadsTable {
     interrupts: Record<string, any>;
 }
 
+export interface CheckpointsTable {
+    checkpoint_id: string;
+    thread_id: string;
+    values: any;
+    next: string[];
+    config: any;
+    created_at: Date;
+    metadata: Record<string, any>;
+}
+
 export interface RunsTable {
     run_id: string;
     thread_id: string;
@@ -26,5 +36,6 @@ export interface RunsTable {
 
 export interface Database {
     threads: ThreadsTable;
+    checkpoints: CheckpointsTable;
     runs: RunsTable;
 }

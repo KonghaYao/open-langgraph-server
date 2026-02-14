@@ -6,6 +6,7 @@ import { Database } from './types';
 import { DatabaseAdapter } from './adapter';
 import { getGraph } from '../../utils/getGraph.js';
 import { serialiseAsDict } from '../../graph/stream.js';
+import { v7 } from 'uuid';
 
 /**
  * 使用 Kysely 实现的统一 ThreadsManager
@@ -33,7 +34,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         graphId?: string;
         supersteps?: Array<{ updates: Array<{ values: unknown; command?: Command; asNode: string }> }>;
     }): Promise<Thread<ValuesType>> {
-        const threadId = payload?.threadId || crypto.randomUUID();
+        const threadId = payload?.threadId || v7();
 
         // 检查线程是否已存在
         if (payload?.ifExists === 'raise') {
@@ -78,42 +79,98 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
 
     async search(query?: {
+        ids?: string[];
         metadata?: Metadata;
         limit?: number;
         offset?: number;
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        values?: ValuesType;
+        select?: Array<
+            | 'thread_id'
+            | 'created_at'
+            | 'updated_at'
+            | 'metadata'
+            | 'config'
+            | 'context'
+            | 'status'
+            | 'values'
+            | 'interrupts'
+        >;
         withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
-        let queryBuilder = this.db.selectFrom('threads').selectAll();
+        let queryBuilder = this.db.selectFrom('threads');
 
-        // 根据 without_details 决定是否选择 values 和 interrupt 字段
-        if (query?.withoutDetails) {
-            queryBuilder = this.db
-                .selectFrom('threads')
-                .select(['thread_id', 'created_at', 'updated_at', 'metadata', 'status']) as any;
+        // Determine which fields to select based on select parameter
+        let selectedFields: Set<string>;
+
+        if (query?.select) {
+            selectedFields = new Set(query.select);
+        } else if (query?.withoutDetails) {
+            // Legacy withoutDetails behavior - exclude values and interrupts
+            selectedFields = new Set(['thread_id', 'created_at', 'updated_at', 'metadata', 'status']);
+        } else {
+            // All fields
+            selectedFields = new Set([
+                'thread_id',
+                'created_at',
+                'updated_at',
+                'metadata',
+                'status',
+                'values',
+                'interrupts',
+            ]);
         }
 
-        // 添加状态过滤
+        // Build select expressions
+        const selections: any[] = [];
+        if (selectedFields.has('thread_id')) selections.push('thread_id');
+        if (selectedFields.has('created_at')) selections.push('created_at');
+        if (selectedFields.has('updated_at')) selections.push('updated_at');
+        if (selectedFields.has('metadata')) selections.push('metadata');
+        if (selectedFields.has('status')) selections.push('status');
+        if (selectedFields.has('values')) selections.push('values');
+        if (selectedFields.has('interrupts')) selections.push('interrupts');
+
+        if (selections.length > 0) {
+            queryBuilder = queryBuilder.select(selections);
+        } else {
+            queryBuilder = queryBuilder.selectAll();
+        }
+
+        // Filter by IDs
+        if (query?.ids && query.ids.length > 0) {
+            queryBuilder = queryBuilder.where('thread_id', 'in', query.ids);
+        }
+
+        // Filter by status
         if (query?.status) {
             queryBuilder = queryBuilder.where('status', '=', query.status);
         }
 
-        // 添加 metadata 过滤
+        // Filter by metadata
         if (query?.metadata) {
             for (const [key, value] of Object.entries(query.metadata)) {
                 queryBuilder = queryBuilder.where(this.adapter.buildJsonQuery(this.db, 'metadata', key, value) as any);
             }
         }
 
-        // 添加排序
+        // Filter by values - Note: This is a simple equality check, may need database-specific JSON operators
+        if (query?.values) {
+            queryBuilder = queryBuilder.where((eb) => {
+                // Use database-specific JSON equality
+                return eb('values', '=', this.adapter.jsonToDb(query.values) as any);
+            });
+        }
+
+        // Add sorting
         if (query?.sortBy) {
             const order = query.sortOrder === 'desc' ? 'desc' : 'asc';
             queryBuilder = queryBuilder.orderBy(query.sortBy as any, order);
         }
 
-        // 添加分页
+        // Add pagination
         if (query?.limit !== undefined) {
             queryBuilder = queryBuilder.limit(query.limit);
             if (query?.offset !== undefined) {
@@ -121,17 +178,23 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             }
         }
 
-        const rows = await queryBuilder.execute();
+        const rows: Partial<Thread<ValuesType>>[] = await queryBuilder.execute();
 
-        return rows.map((row) => ({
-            thread_id: row.thread_id,
-            created_at: this.adapter.dbToDate(row.created_at).toISOString(),
-            updated_at: this.adapter.dbToDate(row.updated_at).toISOString(),
-            metadata: this.adapter.dbToJson(row.metadata),
-            status: row.status as ThreadStatus,
-            values: row.values ? this.adapter.dbToJson(row.values) : (null as unknown as ValuesType),
-            interrupts: this.adapter.dbToJson(row.interrupts),
-        }));
+        return rows.map((row) => {
+            const result: Partial<Thread<ValuesType>> = { thread_id: row.thread_id };
+
+            if (selectedFields.has('created_at'))
+                result.created_at = this.adapter.dbToDate(row.created_at).toISOString();
+            if (selectedFields.has('updated_at'))
+                result.updated_at = this.adapter.dbToDate(row.updated_at).toISOString();
+            if (selectedFields.has('metadata')) result.metadata = this.adapter.dbToJson(row.metadata);
+            if (selectedFields.has('status')) result.status = row.status as ThreadStatus;
+            if (selectedFields.has('values'))
+                result.values = row.values ? this.adapter.dbToJson(row.values) : (null as unknown as ValuesType);
+            if (selectedFields.has('interrupts')) result.interrupts = this.adapter.dbToJson(row.interrupts);
+
+            return result as Thread<ValuesType>;
+        });
     }
 
     async get(threadId: string): Promise<Thread<ValuesType>> {
@@ -229,7 +292,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
 
     async createRun(threadId: string, assistantId: string, payload?: { metadata?: Metadata }): Promise<Run> {
-        const runId = crypto.randomUUID();
+        const runId = v7();
         const now = new Date();
         const metadata = payload?.metadata ?? {};
 

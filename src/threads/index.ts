@@ -12,14 +12,18 @@ export interface BaseThreadsManager<ValuesType = unknown> {
     }): Promise<Thread<ValuesType>>;
     set(threadId: string, thread: Partial<Thread<ValuesType>>): Promise<void>;
     search(query?: {
+        ids?: string[];
         metadata?: Metadata;
         limit?: number;
         offset?: number;
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        values?: ValuesType;
+        select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
         /**
          * @default false
+         * @deprecated Use `select` parameter instead for fine-grained field control
          * @description 是否不返回 values 字段
          */
         withoutDetails?: boolean;

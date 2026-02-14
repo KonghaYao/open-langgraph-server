@@ -73,12 +73,18 @@ export interface CreateThreadRequest {
  * Search Threads API 请求
  */
 export interface SearchThreadsRequest {
+    ids?: string[];
     metadata?: Metadata;
     limit?: number;
     offset?: number;
     status?: ThreadStatus;
     sortBy?: ThreadSortBy;
     sortOrder?: SortOrder;
+    values?: unknown;
+    select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+    /**
+     * @deprecated Use `select` parameter instead for fine-grained field control
+     */
     withoutDetails?: boolean;
 }
 

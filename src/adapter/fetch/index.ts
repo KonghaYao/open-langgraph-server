@@ -1,9 +1,23 @@
 import { LangGraphGlobal } from '../../global';
-import { searchAssistants, getAssistantGraph } from './assistants';
+import {
+    searchAssistants,
+    countAssistants,
+    getAssistant,
+    deleteAssistant,
+    patchAssistant,
+    getAssistantGraph,
+    getAssistantSubgraphs,
+    getAssistantSubgraphsByNamespace,
+    getAssistantSchemas,
+    getAssistantVersions,
+    setLatestAssistantVersion,
+    createAssistant,
+} from './assistants';
 import { createThread, searchThreads, getThread, deleteThread } from './threads';
 import { streamRun, joinRunStream, listRuns, cancelRun, updateThreadState } from './runs';
 import { errorResponse } from './utils';
 import type { LangGraphServerContext } from './context';
+
 /**
  * 路由匹配器
  */
@@ -21,9 +35,59 @@ const routes: Route[] = [
         handler: searchAssistants,
     },
     {
+        method: 'POST',
+        pattern: /^\/assistants\/count$/,
+        handler: countAssistants,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/assistants\/[^/]+$/,
+        handler: getAssistant,
+    },
+    {
+        method: 'DELETE',
+        pattern: /^\/assistants\/[^/]+$/,
+        handler: deleteAssistant,
+    },
+    {
+        method: 'PATCH',
+        pattern: /^\/assistants\/[^/]+$/,
+        handler: patchAssistant,
+    },
+    {
         method: 'GET',
         pattern: /^\/assistants\/[^/]+\/graph$/,
         handler: getAssistantGraph,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/assistants\/[^/]+\/subgraphs$/,
+        handler: getAssistantSubgraphs,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/assistants\/[^/]+\/subgraphs\/[^/]+$/,
+        handler: getAssistantSubgraphsByNamespace,
+    },
+    {
+        method: 'GET',
+        pattern: /^\/assistants\/[^/]+\/schemas$/,
+        handler: getAssistantSchemas,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/assistants\/[^/]+\/versions$/,
+        handler: getAssistantVersions,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/assistants\/[^/]+\/latest$/,
+        handler: setLatestAssistantVersion,
+    },
+    {
+        method: 'POST',
+        pattern: /^\/assistants$/,
+        handler: createAssistant,
     },
 
     // Threads

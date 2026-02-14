@@ -15,7 +15,10 @@
         "dev:docs": "bunx --bun xyd-js@0.1.0-alpha.5",
         "build": " vite build && tsc",
         "docs:build": "pnpx xyd-js@0.1.0-alpha.5 build",
-        "prepublish": "pnpm build"
+        "prepublish": "pnpm build",
+        "test": "vitest",
+        "test:run": "vitest run",
+        "test:coverage": "vitest run --coverage"
     },
     "keywords": [
         "langgraph",
@@ -54,6 +57,7 @@
         "eventemitter3": "^5.0.1",
         "kysely": "^0.28.8",
         "langchain": "^1.0.6",
+        "uuid": "^13.0.0",
         "zod": "^4",
         "zod-defaults": "^0.2.3"
     },
@@ -74,8 +78,10 @@
         "@langgraph-js/sdk": "^3.3.1",
         "@types/node": "^22.13.5",
         "@types/pg": "^8.15.5",
+        "@vitest/coverage-v8": "4.0.18",
         "rollup-plugin-node-externals": "^8.1.1",
         "typescript": "^5.9.2",
-        "vite": "^7.1.12"
+        "vite": "^7.1.12",
+        "vitest": "4.0.18"
     }
 }

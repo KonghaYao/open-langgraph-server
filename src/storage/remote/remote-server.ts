@@ -56,12 +56,15 @@ export class RemoteServer {
         // Thread: Search
         app.get('/threads', async (c) => {
             const query: SearchThreadsRequest = {
+                ids: c.req.query('ids') ? JSON.parse(c.req.query('ids')!) : undefined,
                 metadata: c.req.query('metadata') ? JSON.parse(c.req.query('metadata')!) : undefined,
                 limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
                 offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined,
                 status: c.req.query('status') as any,
                 sortBy: c.req.query('sortBy') as any,
                 sortOrder: c.req.query('sortOrder') as any,
+                values: c.req.query('values') ? JSON.parse(c.req.query('values')!) : undefined,
+                select: c.req.query('select') ? JSON.parse(c.req.query('select')!) : undefined,
                 withoutDetails: c.req.query('withoutDetails') === 'true',
             };
             const threads = await this.threadsManager.search(query);

@@ -17,7 +17,7 @@ export const AssistantConfig = z
     .describe('The configuration of an assistant.');
 
 export const Assistant = z.object({
-    assistant_id: z.string().uuid(),
+    assistant_id: z.string(),
     graph_id: z.string(),
     config: AssistantConfig,
     created_at: z.string(),
@@ -69,16 +69,42 @@ export const AssistantsSearchSchema = z.object({
     metadata: MetadataSchema.optional(),
     limit: z.number().int().optional(),
     offset: z.number().int().optional(),
+    sort_by: z.enum(['assistant_id', 'graph_id', 'name', 'created_at', 'updated_at']).optional(),
+    sort_order: z.enum(['asc', 'desc']).optional(),
+});
+
+export const AssistantCountSchema = z.object({
+    graph_id: z.string().optional(),
+    metadata: MetadataSchema.optional(),
 });
 
 export const AssistantGraphQuerySchema = z.object({
-    xray: z.string().optional(),
+    xray: z.union([z.string(), z.boolean(), z.number()]).optional(),
+});
+
+export const AssistantPatchSchema = z
+    .object({
+        name: z.string().optional(),
+        description: z.string().optional(),
+        metadata: MetadataSchema.optional(),
+        config: AssistantConfig.optional(),
+    })
+    .optional();
+
+export const AssistantCreateSchema = z.object({
+    assistant_id: z.string().optional(),
+    graph_id: z.string().describe('The ID of graph to create an assistant from.'),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    metadata: MetadataSchema.optional(),
+    config: AssistantConfig.optional(),
+    if_exists: z.enum(['raise', 'do_nothing']).optional(),
 });
 
 // Runs 相关的 schema
 export const RunStreamPayloadSchema = z
     .object({
-        assistant_id: z.union([z.string().uuid(), z.string()]),
+        assistant_id: z.union([z.string(), z.string()]),
         checkpoint_id: z.string().optional(),
         input: z.any().optional(),
         command: CommandSchema.optional(),
@@ -122,7 +148,7 @@ export const RunJoinStreamQuerySchema = z.object({
 // Threads 相关的 schema
 export const ThreadCreatePayloadSchema = z
     .object({
-        thread_id: z.string().uuid().describe('The ID of the thread. If not provided, an ID is generated.').optional(),
+        thread_id: z.string().uuid().describe('The ID of thread. If not provided, an ID is generated.').optional(),
         metadata: MetadataSchema.optional(),
         if_exists: z.union([z.literal('raise'), z.literal('do_nothing')]).optional(),
     })
@@ -130,6 +156,7 @@ export const ThreadCreatePayloadSchema = z
 
 export const ThreadSearchPayloadSchema = z
     .object({
+        ids: z.array(z.string()).describe('List of thread IDs to include. Others are excluded.').optional(),
         metadata: MetadataSchema.describe('Metadata to search for.').optional(),
         status: z.enum(['idle', 'busy', 'interrupted', 'error']).describe('Filter by thread status.').optional(),
         values: z.any().describe('Filter by thread values.').optional(),
@@ -137,6 +164,22 @@ export const ThreadSearchPayloadSchema = z
         offset: z.number().int().gte(0).describe('Offset to start from.').optional(),
         sort_by: z.enum(['thread_id', 'status', 'created_at', 'updated_at']).describe('Sort by field.').optional(),
         sort_order: z.enum(['asc', 'desc']).describe('Sort order.').optional(),
+        select: z
+            .array(
+                z.enum([
+                    'thread_id',
+                    'created_at',
+                    'updated_at',
+                    'metadata',
+                    'config',
+                    'context',
+                    'status',
+                    'values',
+                    'interrupts',
+                ]),
+            )
+            .describe('Specify which fields to return. If not provided, all fields are returned.')
+            .optional(),
         without_details: z.boolean().describe('Whether to return values.').optional(),
     })
     .describe('Payload for listing threads.');

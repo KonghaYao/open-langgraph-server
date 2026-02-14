@@ -78,12 +78,19 @@ export interface ILangGraphClient<TStateType = unknown> {
             // }>;
         }): Promise<Thread<TStateType>>;
         search(query?: {
+            ids?: string[];
             metadata?: Metadata;
             limit?: number;
             offset?: number;
             status?: ThreadStatus;
             sortBy?: ThreadSortBy;
             sortOrder?: SortOrder;
+            values?: unknown;
+            select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+            /**
+             * @deprecated Use `select` parameter instead for fine-grained field control
+             */
+            withoutDetails?: boolean;
         }): Promise<Thread<TStateType>[]>;
         get(threadId: string): Promise<Thread<TStateType>>;
         delete(threadId: string): Promise<void>;

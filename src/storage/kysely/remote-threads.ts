@@ -54,16 +54,25 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
      * 搜索线程
      */
     async search(query?: {
+        ids?: string[];
         metadata?: Metadata;
         limit?: number;
         offset?: number;
         status?: any;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        values?: unknown;
+        select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+        /**
+         * @deprecated Use `select` parameter instead for fine-grained field control
+         */
         withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
         const params: Record<string, string | number | boolean> = {};
 
+        if (query?.ids !== undefined && query.ids.length > 0) {
+            params.ids = JSON.stringify(query.ids);
+        }
         if (query?.metadata !== undefined) {
             params.metadata = JSON.stringify(query.metadata);
         }
@@ -81,6 +90,12 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
         }
         if (query?.sortOrder !== undefined) {
             params.sortOrder = query.sortOrder;
+        }
+        if (query?.values !== undefined) {
+            params.values = JSON.stringify(query.values);
+        }
+        if (query?.select !== undefined) {
+            params.select = JSON.stringify(query.select);
         }
         if (query?.withoutDetails !== undefined) {
             params.withoutDetails = query.withoutDetails;

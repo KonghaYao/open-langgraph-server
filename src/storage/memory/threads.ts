@@ -3,6 +3,7 @@ import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadStatu
 import { getGraph } from '../../utils/getGraph.js';
 import { serialiseAsDict } from '../../graph/stream.js';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
+import { v7 } from 'uuid';
 
 export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsManager<ValuesType> {
     private threads: Thread<ValuesType>[] = [];
@@ -17,7 +18,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         graphId?: string;
         supersteps?: Array<{ updates: Array<{ values: unknown; command?: Command; asNode: string }> }>;
     }): Promise<Thread<ValuesType>> {
-        const threadId = payload?.threadId || crypto.randomUUID();
+        const threadId = payload?.threadId || v7();
         if (payload?.ifExists === 'raise' && this.threads.some((t) => t.thread_id === threadId)) {
             throw new Error(`Thread with ID ${threadId} already exists.`);
         }
@@ -36,19 +37,40 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
 
     async search(query?: {
+        ids?: string[];
         metadata?: Metadata;
         limit?: number;
         offset?: number;
         status?: ThreadStatus;
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
+        values?: ValuesType;
+        select?: Array<
+            | 'thread_id'
+            | 'created_at'
+            | 'updated_at'
+            | 'metadata'
+            | 'config'
+            | 'context'
+            | 'status'
+            | 'values'
+            | 'interrupts'
+        >;
         withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
         let filteredThreads = [...this.threads];
+
+        // Filter by IDs
+        if (query?.ids && query.ids.length > 0) {
+            filteredThreads = filteredThreads.filter((t) => query.ids!.includes(t.thread_id));
+        }
+
+        // Filter by status
         if (query?.status) {
             filteredThreads = filteredThreads.filter((t) => t.status === query.status);
         }
 
+        // Filter by metadata
         if (query?.metadata) {
             for (const key in query.metadata) {
                 if (Object.prototype.hasOwnProperty.call(query.metadata, key)) {
@@ -59,12 +81,25 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             }
         }
 
+        // Filter by values
+        if (query?.values) {
+            filteredThreads = filteredThreads.filter((t) => {
+                if (!t.values) return false;
+                return this.deepEqual(t.values, query.values);
+            });
+        }
+
+        // Sort
         if (query?.sortBy) {
             filteredThreads.sort((a, b) => {
                 let aValue: any;
                 let bValue: any;
 
                 switch (query.sortBy) {
+                    case 'thread_id':
+                        aValue = a.thread_id;
+                        bValue = b.thread_id;
+                        break;
                     case 'created_at':
                         aValue = new Date(a.created_at).getTime();
                         bValue = new Date(b.created_at).getTime();
@@ -73,14 +108,18 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                         aValue = new Date(a.updated_at).getTime();
                         bValue = new Date(b.updated_at).getTime();
                         break;
+                    case 'status':
+                        aValue = a.status;
+                        bValue = b.status;
+                        break;
                     default:
                         return 0;
                 }
 
                 if (query.sortOrder === 'desc') {
-                    return bValue - aValue;
+                    return bValue > aValue ? 1 : bValue < aValue ? -1 : 0;
                 } else {
-                    return aValue - bValue;
+                    return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
                 }
             });
         }
@@ -88,14 +127,61 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         const offset = query?.offset || 0;
         const limit = query?.limit || filteredThreads.length;
 
-        return filteredThreads.slice(offset, offset + limit).map((i) => {
-            // 当不需要 values 字段时，进行删除
-            if (query?.withoutDetails) {
-                i.values = null as unknown as ValuesType;
-                i.interrupts = null as unknown as any;
+        const paginatedThreads = filteredThreads.slice(offset, offset + limit);
+
+        // Handle select/withoutDetails to filter fields
+        return paginatedThreads.map((i) => {
+            const result: Partial<Thread<ValuesType>> = { thread_id: i.thread_id };
+
+            // Determine which fields to include
+            let includeFields: Set<string>;
+
+            if (query?.select) {
+                includeFields = new Set(query.select);
+            } else if (query?.withoutDetails) {
+                // Legacy withoutDetails behavior - exclude values and interrupts
+                includeFields = new Set(['thread_id', 'created_at', 'updated_at', 'metadata', 'status']);
+            } else {
+                // All fields
+                includeFields = new Set([
+                    'thread_id',
+                    'created_at',
+                    'updated_at',
+                    'metadata',
+                    'status',
+                    'values',
+                    'interrupts',
+                ]);
             }
-            return i;
+
+            if (includeFields.has('thread_id')) result.thread_id = i.thread_id;
+            if (includeFields.has('created_at')) result.created_at = i.created_at;
+            if (includeFields.has('updated_at')) result.updated_at = i.updated_at;
+            if (includeFields.has('metadata')) result.metadata = i.metadata;
+            if (includeFields.has('status')) result.status = i.status;
+            if (includeFields.has('values')) result.values = i.values;
+            if (includeFields.has('interrupts')) result.interrupts = i.interrupts;
+
+            return result as Thread<ValuesType>;
         });
+    }
+
+    private deepEqual(a: any, b: any): boolean {
+        if (a === b) return true;
+        if (typeof a !== typeof b) return false;
+        if (typeof a !== 'object' || a === null || b === null) return false;
+
+        const keysA = Object.keys(a);
+        const keysB = Object.keys(b);
+
+        if (keysA.length !== keysB.length) return false;
+
+        for (const key of keysA) {
+            if (!keysB.includes(key)) return false;
+            if (!this.deepEqual(a[key], b[key])) return false;
+        }
+
+        return true;
     }
 
     async get(threadId: string): Promise<Thread<ValuesType>> {
@@ -147,7 +233,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
     runs: Run[] = [];
     async createRun(threadId: string, assistantId: string, payload?: { metadata?: Metadata }): Promise<Run> {
-        const runId = crypto.randomUUID();
+        const runId = v7();
         const run: Run = {
             run_id: runId,
             thread_id: threadId,

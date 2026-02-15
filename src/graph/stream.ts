@@ -150,9 +150,11 @@ export async function streamStateWithQueue(
         // 发送流结束信号
         await queue.push(new StreamEndEventMessage());
         // 清理内存：清空 Set 和 Map
+        /** @ts-ignore */
         if (sendedMetadataMessage) {
             sendedMetadataMessage.clear();
         }
+        /** @ts-ignore */
         if (messageChunks) {
             messageChunks.clear();
         }

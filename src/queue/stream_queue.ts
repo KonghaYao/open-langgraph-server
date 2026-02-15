@@ -70,7 +70,7 @@ export interface BaseStreamQueueInterface {
     /** 获取所有数据 / Get all data */
     getAll(): Promise<EventMessage[]>;
     /** 清空队列 / Clear queue */
-    clear(): void;
+    clear(): void | Promise<void>;
     /**
      * 监听数据变化
      * Listen for data changes
@@ -196,10 +196,14 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * Clear queue with specified id
      * @param id 队列 ID / Queue ID
      */
-    clearQueue(id: string): void {
+    async clearQueue(id: string): Promise<void> {
         const queue = this.queues.get(id);
         if (queue) {
-            queue.clear();
+            const result = queue.clear();
+            // 支持同步和异步的 clear 方法
+            if (result instanceof Promise) {
+                await result;
+            }
         }
     }
 

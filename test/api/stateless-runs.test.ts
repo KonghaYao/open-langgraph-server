@@ -99,7 +99,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     input: { messages: [new HumanMessage('Hello')] },
                     config: {
                         tags: ['test-tag'],
-                        recursionLimit: 5,
+                        recursion_limit: 5,
                     },
                 });
 
@@ -173,7 +173,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     input: { messages: [new HumanMessage('Hello')] },
                 });
 
-                const events = [];
+                const events: any[] = [];
                 for await (const event of stream) {
                     events.push(event);
                     // Break after receiving some events to avoid infinite loop in test
@@ -189,7 +189,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     streamMode: 'values',
                 });
 
-                const events = [];
+                const events: any[] = [];
                 for await (const event of stream) {
                     events.push(event);
                     if (events.length > 5) break;
@@ -204,7 +204,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     streamMode: 'messages',
                 });
 
-                const events = [];
+                const events: any[] = [];
                 for await (const event of stream) {
                     events.push(event);
                     if (events.length > 5) break;
@@ -219,7 +219,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     streamMode: ['values', 'messages', 'updates'],
                 });
 
-                const events = [];
+                const events: any[] = [];
                 for await (const event of stream) {
                     events.push(event);
                     if (events.length > 10) break;
@@ -234,7 +234,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     streamSubgraphs: true,
                 });
 
-                const events = [];
+                const events: any[] = [];
                 for await (const event of stream) {
                     events.push(event);
                     if (events.length > 5) break;
@@ -285,7 +285,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
                     input: { messages: [new HumanMessage('Hello')] },
                     config: {
                         tags: ['test-tag'],
-                        recursionLimit: 5,
+                        recursion_limit: 5,
                     },
                 });
 
@@ -372,9 +372,7 @@ describe('LangGraph SDK Stateless Runs 集成测试', () => {
             });
 
             it('should throw error for empty batch array', async () => {
-                await expect(
-                    client.runs.createBatch([]),
-                ).rejects.toThrow();
+                await expect(client.runs.createBatch([])).rejects.toThrow();
             });
 
             it('should create a large batch', async () => {

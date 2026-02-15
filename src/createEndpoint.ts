@@ -27,7 +27,7 @@ export const AssistantEndpoint: ILangGraphClient['assistants'] = {
                     description: '',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
-                }) as Assistant,
+                } as Assistant),
         );
 
         // Filter by graphId
@@ -144,32 +144,32 @@ export const AssistantEndpoint: ILangGraphClient['assistants'] = {
     },
 
     async create(params: {
-        assistant_id?: string;
-        graph_id: string;
+        assistantId?: string;
+        graphId: string;
         name?: string;
         description?: string;
         metadata?: Metadata;
         config?: any;
-        if_exists?: 'raise' | 'do_nothing';
+        ifExists?: 'raise' | 'do_nothing';
     }): Promise<Assistant> {
         // ⚠️ 创建 assistant 不可用 - assistants 是从注册的图中自动生成的，不能动态创建
         // 返回假数据以通过测试
         console.warn(
             '⚠️ Creating assistants is not supported. Assistants are generated from registered graphs. Returning mock data.',
         );
-        const graphExists = Object.keys(GRAPHS).includes(params.graph_id);
+        const graphExists = Object.keys(GRAPHS).includes(params.graphId);
 
         if (!graphExists) {
-            if (params.if_exists === 'raise') {
-                throw new Error(`Graph not found: ${params.graph_id}`);
+            if (params.ifExists === 'raise') {
+                throw new Error(`Graph not found: ${params.graphId}`);
             }
             // 如果 graph 不存在，我们仍然返回假数据
         }
 
         return {
-            assistant_id: params.assistant_id || params.graph_id,
-            graph_id: params.graph_id,
-            name: params.name || params.graph_id,
+            assistant_id: params.assistantId || params.graphId,
+            graph_id: params.graphId,
+            name: params.name || params.graphId,
             description: params.description || '',
             metadata: params.metadata || {},
             config: params.config || {},

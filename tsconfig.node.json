@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "lib": [],
+        "allowJs": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "esModuleInterop": true,
+        "target": "esnext",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "jsx": "preserve",
+        "outDir": "./dist",
+        "declaration": true,
+        "emitDeclarationOnly": true
+    },
+    "include": ["test/**/*.ts"],
+    "exclude": ["node_modules"]
+}

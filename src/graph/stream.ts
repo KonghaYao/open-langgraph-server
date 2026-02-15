@@ -84,9 +84,13 @@ export async function streamStateWithQueue(
         },
     );
 
+    // 在 try 块之前声明变量，确保 finally 块可以访问
+    let sendedMetadataMessage: Set<string>;
+    let messageChunks: Map<string, AIMessageChunk[]>;
+
     try {
-        const sendedMetadataMessage = new Set();
-        const messageChunks = new Map<string, AIMessageChunk[]>();
+        sendedMetadataMessage = new Set();
+        messageChunks = new Map<string, AIMessageChunk[]>();
         for await (const event of await events) {
             let ns: string[] = [];
             /** @ts-ignore subgraph 类型可以为 [ns,name,value] */
@@ -145,6 +149,15 @@ export async function streamStateWithQueue(
     } finally {
         // 发送流结束信号
         await queue.push(new StreamEndEventMessage());
+        // 清理内存：清空 Set 和 Map
+        /** @ts-ignore */
+        if (sendedMetadataMessage) {
+            sendedMetadataMessage.clear();
+        }
+        /** @ts-ignore */
+        if (messageChunks) {
+            messageChunks.clear();
+        }
     }
 }
 
@@ -235,6 +248,8 @@ export async function* streamState(
         } else {
             await threads.set(threadId, { status: 'idle', interrupts: {} });
         }
+        // 清空队列数据，释放内存
+        await LangGraphGlobal.globalMessageQueue.clearQueue(queueId);
         LangGraphGlobal.globalMessageQueue.removeQueue(queueId);
     }
 }

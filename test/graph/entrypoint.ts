@@ -1,13 +1,11 @@
-import { MessagesZodMeta } from '@langchain/langgraph';
+import { MessagesAnnotation, MessagesZodMeta, StateGraph } from '@langchain/langgraph';
 import { z } from 'zod';
 import { createStateEntrypoint } from '../../src';
 import { ChatOpenAI } from '@langchain/openai';
 import { BaseMessage, createAgent, humanInTheLoopMiddleware, tool } from 'langchain';
 import { withLangGraph } from '@langchain/langgraph/zod';
 
-const State = z.object({
-    messages: withLangGraph(z.custom<BaseMessage[]>(), MessagesZodMeta).default([]),
-});
+const State = MessagesAnnotation;
 const show_form = tool(
     (props) => {
         console.log(props);
@@ -35,27 +33,30 @@ const interrupt_test = tool(
     },
 );
 
-export const graph = createStateEntrypoint({ name: 'test-entrypoint', stateSchema: State }, async (state, config) => {
-    const agent = createAgent({
-        model: new ChatOpenAI({
-            model: 'mimo-v2-flash',
-            useResponsesApi: false,
-            tags: ['test'],
-            metadata: {
-                subagent: true,
-            },
-        }),
-        systemPrompt: '你是一个智能助手',
-        stateSchema: State,
-        tools: [show_form, interrupt_test],
-        middleware: [
-            humanInTheLoopMiddleware({
-                interruptOn: {
-                    interrupt_test: true,
+export const graph = new StateGraph(State)
+    .addNode('test-entrypoint', async (state, config) => {
+        const agent = createAgent({
+            model: new ChatOpenAI({
+                model: 'mimo-v2-flash',
+                useResponsesApi: false,
+                tags: ['test'],
+                metadata: {
+                    subagent: true,
                 },
             }),
-        ],
-    });
-    const newState = await agent.invoke(state);
-    return newState;
-});
+            systemPrompt: '你是一个智能助手',
+            stateSchema: State,
+            tools: [show_form, interrupt_test],
+            middleware: [
+                humanInTheLoopMiddleware({
+                    interruptOn: {
+                        interrupt_test: true,
+                    },
+                }),
+            ],
+        });
+        const newState = await agent.invoke(state);
+        return newState;
+    })
+    .addEdge('__start__', 'test-entrypoint')
+    .compile();

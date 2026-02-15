@@ -65,19 +65,22 @@ export interface ILangGraphClient<TStateType = unknown> {
         count(query?: { graphId?: string; metadata?: Metadata }): Promise<number>;
         get(assistantId: string): Promise<Assistant>;
         delete(assistantId: string): Promise<void>;
-        update(assistantId: string, updates: Partial<Pick<Assistant, 'name' | 'description' | 'metadata' | 'config'>>): Promise<Assistant>;
+        update(
+            assistantId: string,
+            updates: Partial<Pick<Assistant, 'name' | 'description' | 'metadata' | 'config'>>,
+        ): Promise<Assistant>;
         getGraph(assistantId: string, options?: { xray?: boolean | number }): Promise<AssistantGraph>;
         getSchemas(assistantId: string): Promise<{ graph_id: string; state_schema: any }>;
         getVersions(assistantId: string, options?: { limit?: number; offset?: number }): Promise<Assistant[]>;
         setLatest(assistantId: string, version: number): Promise<Assistant>;
         create(params: {
-            assistant_id?: string;
-            graph_id: string;
+            assistantId?: string;
+            graphId: string;
             name?: string;
             description?: string;
             metadata?: Metadata;
             config?: any;
-            if_exists?: 'raise' | 'do_nothing';
+            ifExists?: 'raise' | 'do_nothing';
         }): Promise<Assistant>;
     };
     threads: {
@@ -103,7 +106,17 @@ export interface ILangGraphClient<TStateType = unknown> {
             sortBy?: ThreadSortBy;
             sortOrder?: SortOrder;
             values?: unknown;
-            select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+            select?: Array<
+                | 'thread_id'
+                | 'created_at'
+                | 'updated_at'
+                | 'metadata'
+                | 'config'
+                | 'context'
+                | 'status'
+                | 'values'
+                | 'interrupts'
+            >;
             /**
              * @deprecated Use `select` parameter instead for fine-grained field control
              */
@@ -118,13 +131,22 @@ export interface ILangGraphClient<TStateType = unknown> {
             status?: ThreadStatus;
             values?: unknown;
         }): Promise<number>;
-        patch(threadId: string, updates: Partial<Omit<Thread<TStateType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<TStateType>>;
-        getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState<TStateType>>;
-        getStateHistory(threadId: string, options?: {
-            limit?: number;
-            before?: string;
-            filter?: { source?: string; step?: number };
-        }): Promise<ThreadState<TStateType>[]>;
+        patch(
+            threadId: string,
+            updates: Partial<Omit<Thread<TStateType>, 'thread_id' | 'created_at' | 'updated_at'>>,
+        ): Promise<Thread<TStateType>>;
+        getState(
+            threadId: string,
+            options?: { subgraphs?: boolean; checkpointId?: string },
+        ): Promise<ThreadState<TStateType>>;
+        getStateHistory(
+            threadId: string,
+            options?: {
+                limit?: number;
+                before?: string;
+                filter?: { source?: string; step?: number };
+            },
+        ): Promise<ThreadState<TStateType>[]>;
         copy(threadId: string): Promise<Thread<TStateType>>;
     };
     runs: {

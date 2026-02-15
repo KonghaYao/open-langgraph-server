@@ -33,7 +33,7 @@ const interrupt_test = tool(
     },
 );
 
-const workflow = async (state: z.infer<typeof State>, config) => {
+const workflow = async (state: any, config) => {
     console.log('Context:', config);
     const agent = createAgent({
         model: new ChatOpenAI({

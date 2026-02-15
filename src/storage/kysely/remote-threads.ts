@@ -4,13 +4,7 @@
  */
 
 import { BaseThreadsManager } from '../../threads';
-import {
-    Metadata,
-    OnConflictBehavior,
-    Run,
-    Thread,
-    ThreadState,
-} from '@langgraph-js/sdk';
+import { Metadata, OnConflictBehavior, Run, Thread, ThreadState } from '@langgraph-js/sdk';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
 import { remoteGet, remotePost, remotePut, remoteDelete } from '../remote/fetch';
 import { RemoteApiError, RemoteErrorCode } from '../remote/types';
@@ -18,13 +12,8 @@ import { RemoteApiError, RemoteErrorCode } from '../remote/types';
 /**
  * 远程 Kysely Threads Manager
  */
-export class RemoteKyselyThreadsManager<ValuesType = unknown>
-    implements BaseThreadsManager<ValuesType> {
-
-    constructor(
-        private serverUrl: string,
-        private httpClient?: typeof fetch
-    ) {
+export class RemoteKyselyThreadsManager<ValuesType = unknown> implements BaseThreadsManager<ValuesType> {
+    constructor(private serverUrl: string, private httpClient?: typeof fetch) {
         // 确保服务器 URL 没有尾部斜杠
         this.serverUrl = serverUrl.replace(/\/$/, '');
         this.httpClient = httpClient || fetch;
@@ -63,7 +52,17 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
         values?: ValuesType;
-        select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+        select?: Array<
+            | 'thread_id'
+            | 'created_at'
+            | 'updated_at'
+            | 'metadata'
+            | 'config'
+            | 'context'
+            | 'status'
+            | 'values'
+            | 'interrupts'
+        >;
         /**
          * @deprecated Use `select` parameter instead for fine-grained field control
          */
@@ -131,10 +130,13 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
     /**
      * 更新状态
      */
-    async updateState(threadId: string, thread: Partial<Thread<ValuesType>>): Promise<{ configurable: Record<string, any> }> {
+    async updateState(
+        threadId: string,
+        thread: Partial<Thread<ValuesType>>,
+    ): Promise<{ configurable: Record<string, any> }> {
         const response = await remotePost<{ configurable: Record<string, any> }>(
             `${this.serverUrl}/threads/${threadId}/state`,
-            thread
+            thread,
         );
         return response.data as { configurable: Record<string, any> };
     }
@@ -143,18 +145,19 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
      * 创建运行
      */
     async createRun(threadId: string, assistantId: string, payload?: { metadata?: Metadata }): Promise<Run> {
-        const response = await remotePost<Run>(
-            `${this.serverUrl}/threads/${threadId}/runs`,
-            payload || {},
-            { assistantId }
-        );
+        const response = await remotePost<Run>(`${this.serverUrl}/threads/${threadId}/runs`, payload || {}, {
+            assistantId,
+        });
         return response.data as Run;
     }
 
     /**
      * 列出运行
      */
-    async listRuns(threadId: string, options?: { limit?: number; offset?: number; status?: RunStatus }): Promise<Run[]> {
+    async listRuns(
+        threadId: string,
+        options?: { limit?: number; offset?: number; status?: RunStatus },
+    ): Promise<Run[]> {
         const params: Record<string, string | number> = {};
 
         if (options?.limit !== undefined) {
@@ -183,12 +186,7 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
     /**
      * 计算线程数量
      */
-    async count(query?: {
-        ids?: string[];
-        metadata?: Metadata;
-        status?: any;
-        values?: ValuesType;
-    }): Promise<number> {
+    async count(query?: { ids?: string[]; metadata?: Metadata; status?: any; values?: ValuesType }): Promise<number> {
         const params: Record<string, string> = {};
 
         if (query?.ids !== undefined && query.ids.length > 0) {
@@ -211,7 +209,10 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
     /**
      * 更新线程元数据
      */
-    async patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>> {
+    async patch(
+        threadId: string,
+        updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>,
+    ): Promise<Thread<ValuesType>> {
         const response = await remotePost<Thread<ValuesType>>(`${this.serverUrl}/threads/${threadId}`, updates);
         return response.data as Thread<ValuesType>;
     }
@@ -220,7 +221,7 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
      * 获取线程状态
      */
     async getState(threadId: string, options?: { subgraphs?: boolean; checkpointId?: string }): Promise<ThreadState> {
-        const params: Record<string, boolean> = {};
+        const params: Record<string, boolean | string> = {};
 
         if (options?.subgraphs !== undefined) {
             params.subgraphs = options.subgraphs;
@@ -236,11 +237,14 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown>
     /**
      * 获取线程历史
      */
-    async getStateHistory(threadId: string, options?: {
-        limit?: number;
-        before?: string;
-        filter?: { source?: string; step?: number };
-    }): Promise<ThreadState[]> {
+    async getStateHistory(
+        threadId: string,
+        options?: {
+            limit?: number;
+            before?: string;
+            filter?: { source?: string; step?: number };
+        },
+    ): Promise<ThreadState[]> {
         const params: Record<string, number | string> = {};
 
         if (options?.limit !== undefined) {

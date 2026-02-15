@@ -1,11 +1,5 @@
 import { client } from './endpoint';
-import {
-    ThreadIdParamSchema,
-    RunIdParamSchema,
-    RunCreateSchema,
-    RunWaitQuerySchema,
-    RunJoinQuerySchema,
-} from '../zod';
+import { ThreadIdParamSchema, RunIdParamSchema, RunCreateSchema, RunWaitQuerySchema, RunJoinQuerySchema } from '../zod';
 import camelcaseKeys from 'camelcase-keys';
 import {
     parsePathParams,
@@ -204,7 +198,7 @@ export async function joinRun(req: Request, context: LangGraphServerContext): Pr
             signal: controller.signal,
             cancelOnDisconnect: cancel_on_disconnect,
         })) {
-            if (event === 'end' || event === 'writes/value') {
+            if (event.event === 'end' || event.event === 'writes/value') {
                 if (data && typeof data === 'object') {
                     Object.assign(stateValues, data);
                 }

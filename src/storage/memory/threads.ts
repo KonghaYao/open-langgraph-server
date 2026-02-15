@@ -1,5 +1,14 @@
 import { BaseThreadsManager } from '../../threads/index.js';
-import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
+import {
+    Command,
+    Config,
+    Metadata,
+    OnConflictBehavior,
+    Run,
+    Thread,
+    ThreadState,
+    ThreadStatus,
+} from '@langgraph-js/sdk';
 import { getGraph } from '../../utils/getGraph.js';
 import { serialiseAsDict } from '../../graph/stream.js';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
@@ -238,7 +247,11 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         }
 
         // Allow updating state even without graph_id for basic functionality
-        this.threads[index] = { ...targetThread, values: thread.values as ValuesType, updated_at: new Date().toISOString() };
+        this.threads[index] = {
+            ...targetThread,
+            values: thread.values as ValuesType,
+            updated_at: new Date().toISOString(),
+        };
 
         // If graph_id is present, use graph to update state
         if (targetThread.metadata?.graph_id) {
@@ -320,7 +333,10 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         return threads.length;
     }
 
-    async patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>> {
+    async patch(
+        threadId: string,
+        updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>,
+    ): Promise<Thread<ValuesType>> {
         const index = this.threads.findIndex((t) => t.thread_id === threadId);
         if (index === -1) {
             throw new Error(`Thread with ID ${threadId} not found.`);
@@ -346,7 +362,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         if (options?.checkpointId) {
             // Get state at specific checkpoint
             const checkpoints = this.checkpoints.get(threadId) || [];
-            const checkpoint = checkpoints.find(c => c.checkpoint_id === options.checkpointId);
+            const checkpoint = checkpoints.find((c) => c.checkpoint_id === options.checkpointId);
             if (!checkpoint) {
                 throw new Error(`Checkpoint with ID ${options.checkpointId} not found for thread ${threadId}`);
             }
@@ -355,6 +371,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 next: checkpoint.next,
                 metadata: checkpoint.metadata,
                 checkpoint: {
+                    /** @ts-ignore 附加属性 */
                     id: checkpoint.checkpoint_id,
                     thread_id: threadId,
                     parent_checkpoint_id: null,
@@ -373,14 +390,8 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             values: thread.values || {},
             next: [],
             metadata: thread.metadata,
-            checkpoint: {
-                id: v7(),
-                thread_id: threadId,
-                parent_checkpoint_id: null,
-                checkpoint_ns: '',
-                metadata: thread.metadata,
-                created_at: thread.created_at,
-            },
+            /** @ts-ignore 没有查询过 */
+            checkpoint: null,
             created_at: thread.created_at,
             parent_checkpoint: null,
             tasks: [],
@@ -389,33 +400,37 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         return state;
     }
 
-    async getStateHistory(threadId: string, options?: {
-        limit?: number;
-        before?: string;
-        filter?: { source?: string; step?: number };
-    }): Promise<ThreadState[]> {
+    async getStateHistory(
+        threadId: string,
+        options?: {
+            limit?: number;
+            before?: string;
+            filter?: { source?: string; step?: number };
+        },
+    ): Promise<ThreadState[]> {
         const checkpoints = this.checkpoints.get(threadId) || [];
 
-        let history: ThreadState[] = checkpoints.map(cp => ({
-            values: cp.values,
-            next: cp.next,
-            metadata: cp.metadata,
-            checkpoint: {
-                id: cp.checkpoint_id,
-                thread_id: threadId,
-                parent_checkpoint_id: null,
-                checkpoint_ns: '',
-                metadata: cp.metadata,
-                created_at: cp.created_at,
-            },
-            created_at: cp.created_at,
-            parent_checkpoint: null,
-            tasks: [],
-        }));
+        let history: ThreadState[] = checkpoints.map(
+            (cp) =>
+                ({
+                    values: cp.values,
+                    next: cp.next,
+                    metadata: cp.metadata,
+                    checkpoint: {
+                        checkpoint_id: cp.checkpoint_id,
+                        thread_id: threadId,
+                        checkpoint_ns: '',
+                        checkpoint_map: undefined,
+                    },
+                    created_at: cp.created_at,
+                    parent_checkpoint: null,
+                    tasks: [],
+                } satisfies ThreadState),
+        );
 
         // Filter by 'before' checkpoint ID
         if (options?.before) {
-            const beforeIndex = checkpoints.findIndex(c => c.checkpoint_id === options.before);
+            const beforeIndex = checkpoints.findIndex((c) => c.checkpoint_id === options.before);
             if (beforeIndex !== -1) {
                 history = history.slice(beforeIndex + 1);
             }
@@ -445,7 +460,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
 
         // Copy checkpoints
         const originalCheckpoints = this.checkpoints.get(threadId) || [];
-        const newCheckpoints = originalCheckpoints.map(cp => ({
+        const newCheckpoints = originalCheckpoints.map((cp) => ({
             ...cp,
             checkpoint_id: v7(), // Generate new checkpoint IDs
             thread_id: newThreadId,
@@ -456,7 +471,13 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
 
     // Helper method to save checkpoint (used internally)
-    async saveCheckpoint(threadId: string, values: any, next: string[], config: Config, metadata?: Metadata): Promise<void> {
+    async saveCheckpoint(
+        threadId: string,
+        values: any,
+        next: string[],
+        config: Config,
+        metadata?: Metadata,
+    ): Promise<void> {
         const checkpoints = this.checkpoints.get(threadId) || [];
         const checkpoint: ThreadCheckpoint = {
             checkpoint_id: v7(),

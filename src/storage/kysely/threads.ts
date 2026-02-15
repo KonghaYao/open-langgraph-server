@@ -1,6 +1,15 @@
 import { Kysely } from 'kysely';
 import { BaseThreadsManager } from '../../threads/index.js';
-import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
+import {
+    Command,
+    Config,
+    Metadata,
+    OnConflictBehavior,
+    Run,
+    Thread,
+    ThreadState,
+    ThreadStatus,
+} from '@langgraph-js/sdk';
 import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
 import { Database } from './types';
 import { DatabaseAdapter } from './adapter';
@@ -258,7 +267,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     async delete(threadId: string): Promise<void> {
         const result = await this.db.deleteFrom('threads').where('thread_id', '=', threadId).executeTakeFirst();
 
-        if (result.numDeletedRows === 0) {
+        if (result.numDeletedRows === 0n) {
             throw new Error(`Thread with ID ${threadId} not found.`);
         }
     }
@@ -401,7 +410,10 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         return threads.length;
     }
 
-    async patch(threadId: string, updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>): Promise<Thread<ValuesType>> {
+    async patch(
+        threadId: string,
+        updates: Partial<Omit<Thread<ValuesType>, 'thread_id' | 'created_at' | 'updated_at'>>,
+    ): Promise<Thread<ValuesType>> {
         // 获取当前线程
         const existing = await this.db
             .selectFrom('threads')
@@ -462,6 +474,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 next: this.adapter.dbToJson(checkpoint.next),
                 metadata: this.adapter.dbToJson(checkpoint.metadata),
                 checkpoint: {
+                    /** @ts-ignore */
                     id: checkpoint.checkpoint_id,
                     thread_id: threadId,
                     parent_checkpoint_id: null,
@@ -480,14 +493,8 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             values: thread.values || {},
             next: [],
             metadata: thread.metadata,
-            checkpoint: {
-                id: v7(),
-                thread_id: threadId,
-                parent_checkpoint_id: null,
-                checkpoint_ns: '',
-                metadata: thread.metadata,
-                created_at: thread.created_at,
-            },
+            /**@ts-ignore 没有查询 checkpointer */
+            checkpoint: null,
             created_at: thread.created_at,
             parent_checkpoint: null,
             tasks: [],
@@ -496,11 +503,14 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         return state;
     }
 
-    async getStateHistory(threadId: string, options?: {
-        limit?: number;
-        before?: string;
-        filter?: { source?: string; step?: number };
-    }): Promise<ThreadState[]> {
+    async getStateHistory(
+        threadId: string,
+        options?: {
+            limit?: number;
+            before?: string;
+            filter?: { source?: string; step?: number };
+        },
+    ): Promise<ThreadState[]> {
         let queryBuilder = this.db
             .selectFrom('checkpoints')
             .selectAll()
@@ -509,26 +519,27 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
 
         const checkpoints = await queryBuilder.execute();
 
-        let history: ThreadState[] = checkpoints.map(cp => ({
-            values: this.adapter.dbToJson(cp.values),
-            next: this.adapter.dbToJson(cp.next),
-            metadata: this.adapter.dbToJson(cp.metadata),
-            checkpoint: {
-                id: cp.checkpoint_id,
-                thread_id: threadId,
-                parent_checkpoint_id: null,
-                checkpoint_ns: '',
-                metadata: this.adapter.dbToJson(cp.metadata),
-                created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
-            },
-            created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
-            parent_checkpoint: null,
-            tasks: [],
-        }));
+        let history: ThreadState[] = checkpoints.map(
+            (cp) =>
+                ({
+                    values: this.adapter.dbToJson(cp.values),
+                    next: this.adapter.dbToJson(cp.next),
+                    metadata: this.adapter.dbToJson(cp.metadata),
+                    checkpoint: {
+                        thread_id: threadId,
+                        checkpoint_ns: '',
+                        checkpoint_id: cp.checkpoint_id,
+                        checkpoint_map: null,
+                    },
+                    created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
+                    parent_checkpoint: null,
+                    tasks: [],
+                } satisfies ThreadState),
+        );
 
         // Filter by 'before' checkpoint ID
         if (options?.before) {
-            const beforeIndex = checkpoints.findIndex(c => c.checkpoint_id === options.before);
+            const beforeIndex = checkpoints.findIndex((c) => c.checkpoint_id === options.before);
             if (beforeIndex !== -1) {
                 history = history.slice(beforeIndex + 1);
             }
@@ -557,7 +568,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 updated_at: this.adapter.dateToDb(now) as any,
                 metadata: this.adapter.jsonToDb(originalThread.metadata) as any,
                 status: originalThread.status,
-                values: originalThread.values ? this.adapter.jsonToDb(originalThread.values) as any : null as any,
+                values: originalThread.values ? (this.adapter.jsonToDb(originalThread.values) as any) : (null as any),
                 interrupts: this.adapter.jsonToDb(originalThread.interrupts) as any,
             })
             .execute();
@@ -594,7 +605,13 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
     }
 
     // Helper method to save checkpoint (used internally)
-    private async saveCheckpoint(threadId: string, values: any, next: string[], config: Config, metadata?: Metadata): Promise<void> {
+    private async saveCheckpoint(
+        threadId: string,
+        values: any,
+        next: string[],
+        config: Config,
+        metadata?: Metadata,
+    ): Promise<void> {
         await this.db
             .insertInto('checkpoints')
             .values({

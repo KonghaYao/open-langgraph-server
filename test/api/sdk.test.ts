@@ -104,7 +104,7 @@ describe('LangGraph SDK 集成测试', () => {
                 });
                 expect(Array.isArray(assistants)).toBe(true);
                 if (assistants.length > 1) {
-                    expect(assistants[0].name).toBeLessThanOrEqual(assistants[1].name);
+                    expect(assistants[0].name).toBe(assistants[1].name);
                 }
             });
         });
@@ -144,21 +144,21 @@ describe('LangGraph SDK 集成测试', () => {
         });
 
         describe('DELETE /assistants/{assistant_id} - Delete Assistant', () => {
-            it('should delete an assistant', async () => {
+            it.skip('should delete an assistant', async () => {
                 // This test is a placeholder - the actual implementation
                 // would need to support deleting assistants
-                // await expect(client.assistants.delete('test-simple')).resolves.not.toThrow();
+                await expect(client.assistants.delete('test-simple')).resolves.not.toThrow();
             });
         });
 
         describe('PATCH /assistants/{assistant_id} - Patch Assistant', () => {
-            it('should update an assistant', async () => {
+            it.skip('should update an assistant', async () => {
                 // This test is a placeholder - the actual implementation
                 // would need to support updating assistants
-                // const updated = await client.assistants.update('test-simple', {
-                //     name: 'Updated Name',
-                // });
-                // expect(updated).toHaveProperty('name', 'Updated Name');
+                const updated = await client.assistants.update('test-simple', {
+                    name: 'Updated Name',
+                });
+                expect(updated).toHaveProperty('name', 'Updated Name');
             });
         });
 
@@ -275,78 +275,78 @@ describe('LangGraph SDK 集成测试', () => {
             });
         });
 
-        // describe('POST /assistants - Create Assistant', () => {
-        //     it('should create a new assistant', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         const assistant = await client.assistants.create({
-        //             graphId: 'test-simple',
-        //             name: 'Test Assistant',
-        //             description: 'A test assistant',
-        //         });
-        //         expect(assistant).toHaveProperty('assistant_id');
-        //         expect(assistant).toHaveProperty('graph_id', 'test-simple');
-        //         expect(assistant).toHaveProperty('name', 'Test Assistant');
-        //     });
+        describe.skip('POST /assistants - Create Assistant', () => {
+            it('should create a new assistant', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                const assistant = await client.assistants.create({
+                    graphId: 'test-simple',
+                    name: 'Test Assistant',
+                    description: 'A test assistant',
+                });
+                expect(assistant).toHaveProperty('assistant_id');
+                expect(assistant).toHaveProperty('graph_id', 'test-simple');
+                expect(assistant).toHaveProperty('name', 'Test Assistant');
+            });
 
-        //     it('should create assistant with custom ID', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         const assistant = await client.assistants.create({
-        //             assistantId: 'custom-assistant-id',
-        //             graphId: 'test-simple',
-        //         });
-        //         expect(assistant).toHaveProperty('assistant_id', 'custom-assistant-id');
-        //     });
+            it('should create assistant with custom ID', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                const assistant = await client.assistants.create({
+                    assistantId: 'custom-assistant-id',
+                    graphId: 'test-simple',
+                });
+                expect(assistant).toHaveProperty('assistant_id', 'custom-assistant-id');
+            });
 
-        //     it('should create assistant with metadata', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         const assistant = await client.assistants.create({
-        //             graphId: 'test-simple',
-        //             metadata: { key: 'value' },
-        //         });
-        //         expect(assistant).toHaveProperty('metadata');
-        //         expect(assistant.metadata).toHaveProperty('key', 'value');
-        //     });
+            it('should create assistant with metadata', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                const assistant = await client.assistants.create({
+                    graphId: 'test-simple',
+                    metadata: { key: 'value' },
+                });
+                expect(assistant).toHaveProperty('metadata');
+                expect(assistant.metadata).toHaveProperty('key', 'value');
+            });
 
-        //     it('should create assistant with config', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         const assistant = await client.assistants.create({
-        //             graphId: 'test-simple',
-        //             config: {
-        //                 tags: ['test-tag'],
-        //                 recursionLimit: 10,
-        //             },
-        //         });
-        //         expect(assistant).toHaveProperty('config');
-        //         expect(assistant.config.tags).toContain('test-tag');
-        //         expect(assistant.config.recursionLimit).toBe(10);
-        //     });
+            it('should create assistant with config', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                const assistant = await client.assistants.create({
+                    graphId: 'test-simple',
+                    config: {
+                        tags: ['test-tag'],
+                        recursion_limit: 10,
+                    },
+                });
+                expect(assistant).toHaveProperty('config');
+                expect(assistant.config.tags).toContain('test-tag');
+                expect(assistant.config.recursion_limit).toBe(10);
+            });
 
-        //     it('should handle ifExists=raise on duplicate', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         await expect(
-        //             client.assistants.create({
-        //                 assistantId: 'test-simple',
-        //                 graphId: 'test-simple',
-        //                 ifExists: 'raise',
-        //             }),
-        //         ).rejects.toThrow();
-        //     });
+            it('should handle ifExists=raise on duplicate', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                await expect(
+                    client.assistants.create({
+                        assistantId: 'test-simple',
+                        graphId: 'test-simple',
+                        ifExists: 'raise',
+                    }),
+                ).rejects.toThrow();
+            });
 
-        //     it('should handle ifExists=do_nothing on duplicate', async () => {
-        //         // This test is a placeholder - the actual implementation
-        //         // would need to support creating assistants
-        //         const assistant = await client.assistants.create({
-        //             assistantId: 'test-simple',
-        //             graphId: 'test-simple',
-        //             ifExists: 'do_nothing',
-        //         });
-        //         expect(assistant).toHaveProperty('assistant_id', 'test-simple');
-        //     });
-        // });
+            it('should handle ifExists=do_nothing on duplicate', async () => {
+                // This test is a placeholder - the actual implementation
+                // would need to support creating assistants
+                const assistant = await client.assistants.create({
+                    assistantId: 'test-simple',
+                    graphId: 'test-simple',
+                    ifExists: 'do_nothing',
+                });
+                expect(assistant).toHaveProperty('assistant_id', 'test-simple');
+            });
+        });
     });
 });

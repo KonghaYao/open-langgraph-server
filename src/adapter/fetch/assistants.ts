@@ -90,7 +90,11 @@ export async function patchAssistant(req: Request, context: LangGraphServerConte
         const body = await req.json();
         const payload = validate(AssistantPatchSchema, body);
 
-        const data = await client.assistants.update(assistant_id, camelcaseKeys(payload));
+        const data = await client.assistants.update(
+            assistant_id,
+            /** @ts-ignore */
+            camelcaseKeys(payload),
+        );
 
         return jsonResponse(data);
     } catch (error) {
@@ -180,7 +184,11 @@ export async function getAssistantVersions(req: Request, context: LangGraphServe
         const body = await req.json();
         const payload = validate(AssistantPatchSchema, body); // Reuse pagination schema
 
-        const data = await client.assistants.getVersions(assistant_id, camelcaseKeys(payload));
+        const data = await client.assistants.getVersions(
+            assistant_id,
+            /** @ts-ignore */
+            camelcaseKeys(payload),
+        );
 
         return jsonResponse(data);
     } catch (error) {

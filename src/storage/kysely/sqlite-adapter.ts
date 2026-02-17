@@ -46,10 +46,16 @@ export class SQLiteAdapter implements DatabaseAdapter {
         key: string,
         value: any,
     ): Expression<SqlBool> {
-        // SQLite 使用 json_extract 函数
-        return sql<boolean>`json_extract(${sql.ref(field)}, ${sql.lit('$.' + key)}) = ${sql.lit(
-            JSON.stringify(value),
-        )}`;
+        const jsonString = JSON.stringify(value);
+        
+        // 改进的 JSON 查询，添加 NULL 值处理
+        // json_extract 会返回 NULL 当键不存在或值为 NULL
+        return sql<boolean>`(
+            json_extract(${sql.ref(field)}, ${sql.lit('$.' + key)}) = ${sql.lit(jsonString)}
+        ) OR (
+            json_extract(${sql.ref(field)}, ${sql.lit('$.' + key)}) IS NULL
+            AND ${sql.lit(jsonString)} IS NULL
+        )`;
     }
 
     now(): string {

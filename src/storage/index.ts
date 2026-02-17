@@ -1,10 +1,15 @@
 import { BaseStreamQueueInterface, StreamQueueManager } from '../queue/stream_queue';
 import { KyselyThreadsManager } from './kysely/threads';
 import { MemorySaver } from './memory/checkpoint';
+import { ShallowMemorySaver } from './memory/shallow-memory';
 import { MemoryStreamQueue } from './memory/queue';
 import { MemoryThreadsManager } from './memory/threads';
 import type { SqliteSaver as SqliteSaverType } from './sqlite/checkpoint';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
+
+// Re-export for external use
+export { ShallowMemorySaver } from './memory/shallow-memory';
+export { MemorySaver } from './memory/checkpoint';
 
 // 所有的适配实现，都请写到这里，通过环境变量进行判断使用哪种方式进行适配
 export const createCheckPointer = async () => {
@@ -48,7 +53,7 @@ export const createCheckPointer = async () => {
         '\x1b[33m%s\x1b[0m',
         'LG | set DATABASE_URL=postgresql://user:pass@localhost:5432/db to your .env file to use \x1b[1mPostgreSQL\x1b[0m for prod!',
     );
-    return new MemorySaver();
+    return new ShallowMemorySaver();
 };
 
 export const createMessageQueue = async () => {

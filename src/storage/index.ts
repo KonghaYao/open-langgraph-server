@@ -5,18 +5,18 @@ import { ShallowMemorySaver } from './memory/shallow-memory';
 import { MemoryStreamQueue } from './memory/queue';
 import { MemoryThreadsManager } from './memory/threads';
 import type { SqliteSaver as SqliteSaverType } from './sqlite/checkpoint';
+import type { SqliteShallowSaver as SqliteShallowSaverType } from './sqlite/shallow-checkpoint';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
 // Re-export for external use
 export { ShallowMemorySaver } from './memory/shallow-memory';
 export { MemorySaver } from './memory/checkpoint';
+export { SqliteShallowSaver } from './sqlite/shallow-checkpoint';
 
 // 所有的适配实现，都请写到这里，通过环境变量进行判断使用哪种方式进行适配
 export const createCheckPointer = async () => {
-    if (
-        (process.env.REDIS_URL && process.env.CHECKPOINT_TYPE === 'redis') ||
-        process.env.CHECKPOINT_TYPE === 'shallow/redis'
-    ) {
+    // Redis checkpointer (full or shallow)
+    if (process.env.REDIS_URL && (process.env.CHECKPOINT_TYPE === 'redis' || process.env.CHECKPOINT_TYPE === 'shallow/redis')) {
         if (process.env.CHECKPOINT_TYPE === 'redis') {
             console.debug('LG | Using redis as checkpoint');
             const { RedisSaver } = await import('@langchain/langgraph-checkpoint-redis');
@@ -32,18 +32,30 @@ export const createCheckPointer = async () => {
         }
     }
 
+    // PostgreSQL checkpointer
     if (process.env.DATABASE_URL && getDatabaseType(process.env.DATABASE_URL) === 'postgres') {
         console.debug('LG | Using postgres as checkpoint');
         const { createPGCheckpoint } = await import('./pg/checkpoint');
         return createPGCheckpoint();
     }
 
+    // SQLite checkpointer (shallow is now the default)
     if (process.env.SQLITE_DATABASE_URI) {
-        console.debug('LG | Using sqlite as checkpoint');
-        const { SqliteSaver } = await import('./sqlite/checkpoint');
-        const db = await SqliteSaver.fromConnStringAsync(process.env.SQLITE_DATABASE_URI);
+        // 默认使用 shallow 模式，除非明确指定 CHECKPOINT_TYPE=sqlite
+        if (process.env.CHECKPOINT_TYPE === 'sqlite') {
+            console.debug('LG | Using sqlite (full) as checkpoint');
+            const { SqliteSaver } = await import('./sqlite/checkpoint');
+            const db = await SqliteSaver.fromConnStringAsync(process.env.SQLITE_DATABASE_URI);
+            return db;
+        }
+        // 默认使用 shallow/sqlite 模式
+        console.debug('LG | Using shallow sqlite as checkpoint (default)');
+        const { SqliteShallowSaver } = await import('./sqlite/shallow-checkpoint');
+        const db = await SqliteShallowSaver.fromConnStringAsync(process.env.SQLITE_DATABASE_URI);
         return db;
     }
+
+    // Fallback to memory
     console.log('LG | You are using memory as checkpoint!');
     console.log(
         '\x1b[33m%s\x1b[0m',
@@ -79,7 +91,7 @@ function getDatabaseType(databaseUrl: string): 'postgres' | 'remote' {
     return 'postgres';
 }
 
-export const createThreadManager = async (config: { checkpointer?: SqliteSaverType | PostgresSaver }) => {
+export const createThreadManager = async (config: { checkpointer?: SqliteSaverType | SqliteShallowSaverType | PostgresSaver }) => {
     if (process.env.DATABASE_URL) {
         const dbType = getDatabaseType(process.env.DATABASE_URL);
 
@@ -109,7 +121,8 @@ export const createThreadManager = async (config: { checkpointer?: SqliteSaverTy
     if (process.env.SQLITE_DATABASE_URI && config.checkpointer) {
         console.debug('LG | Using SQLite ThreadsManager');
         const { SQLiteAdapter } = await import('./kysely/sqlite-adapter');
-        const database = (config.checkpointer as SqliteSaverType).db;
+        // Support both SqliteSaver and SqliteShallowSaver
+        const database = (config.checkpointer as SqliteSaverType | SqliteShallowSaverType).db;
         const threadsManager = new KyselyThreadsManager(new SQLiteAdapter(database));
         // sqlite 可以执行多次，速度很快
         await threadsManager.setup();

@@ -10,8 +10,32 @@ import { Database } from './types';
  */
 export class SQLiteAdapter implements DatabaseAdapter {
     db: Kysely<Database>;
+    private pragmaPromise: Promise<void> | null = null;
+
     constructor(database: Kysely<any>) {
         this.db = database;
+    }
+
+    /**
+     * 设置 SQLite PRAGMA 配置，解决锁问题
+     * 使用 Promise 缓存确保并发安全且只执行一次
+     */
+    private ensurePragma(): Promise<void> {
+        if (!this.pragmaPromise) {
+            this.pragmaPromise = this.doEnsurePragma();
+        }
+        return this.pragmaPromise;
+    }
+
+    private async doEnsurePragma(): Promise<void> {
+        // 锁等待超时 5 秒
+        await sql`PRAGMA busy_timeout = 5000`.execute(this.db);
+        // WAL 模式 - 读写并发
+        await sql`PRAGMA journal_mode = WAL`.execute(this.db);
+        // 平衡安全与性能
+        await sql`PRAGMA synchronous = NORMAL`.execute(this.db);
+        // 自动清理 WAL
+        await sql`PRAGMA wal_autocheckpoint = 1000`.execute(this.db);
     }
     dateToDb(date: Date): string {
         // SQLite 存储为 ISO 8601 字符串
@@ -100,6 +124,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
     }
 
     async createTables(db: Kysely<Database>): Promise<void> {
+        // 先设置 PRAGMA
+        await this.ensurePragma();
+
         // 创建 threads 表
         await sql`
             CREATE TABLE IF NOT EXISTS threads (

@@ -14,6 +14,54 @@ import {
     maxChannelVersion,
 } from '@langchain/langgraph-checkpoint';
 
+/**
+ * SQLite 重试配置
+ */
+const SQLITE_RETRY_CONFIG = {
+    maxRetries: 3,
+    baseDelayMs: 100,
+    isRetryableError: (error: any): boolean => {
+        const msg = error?.message?.toLowerCase() || '';
+        // 精确匹配 SQLITE_BUSY 和 database is locked
+        return (
+            msg.includes('sqlite_busy') ||
+            msg.includes('database is locked') ||
+            msg.includes('database disk image is malformed') ||
+            msg === 'sqlite_busy' ||
+            msg === 'database is locked'
+        );
+    },
+};
+
+/**
+ * 带重试的数据库操作包装器
+ */
+async function withRetry<T>(operation: () => Promise<T>, context?: string): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < SQLITE_RETRY_CONFIG.maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (error: any) {
+            lastError = error;
+
+            if (!SQLITE_RETRY_CONFIG.isRetryableError(error)) {
+                throw error;
+            }
+
+            if (attempt < SQLITE_RETRY_CONFIG.maxRetries - 1) {
+                const delay = SQLITE_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
+                console.warn(
+                    `SQLite lock detected${context ? ` (${context})` : ''}, retrying in ${delay}ms (attempt ${attempt + 1}/${SQLITE_RETRY_CONFIG.maxRetries})`,
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    throw lastError;
+}
+
 // Kysely 数据库表类型定义
 interface CheckpointsTable {
     thread_id: string;
@@ -126,7 +174,17 @@ export class SqliteSaver extends BaseCheckpointSaver {
             return;
         }
 
+        // 锁等待超时 5 秒，避免立即返回 SQLITE_BUSY
+        await sql`PRAGMA busy_timeout = 5000`.execute(this.db);
+
+        // WAL 模式 - 允许读写并发
         await sql`PRAGMA journal_mode = WAL`.execute(this.db);
+
+        // NORMAL 模式 - 平衡数据安全与性能
+        await sql`PRAGMA synchronous = NORMAL`.execute(this.db);
+
+        // WAL 自动检查点 - 每 1000 页执行一次，避免 WAL 文件无限增长
+        await sql`PRAGMA wal_autocheckpoint = 1000`.execute(this.db);
 
         await sql`
 CREATE TABLE IF NOT EXISTS checkpoints (
@@ -412,6 +470,7 @@ CREATE TABLE IF NOT EXISTS writes (
 
         const preparedCheckpoint: Partial<Checkpoint> = copyCheckpoint(checkpoint);
 
+        // 序列化在事务外完成
         const [[type1, serializedCheckpoint], [type2, serializedMetadata]] = await Promise.all([
             this.serde.dumpsTyped(preparedCheckpoint),
             this.serde.dumpsTyped(metadata),
@@ -421,26 +480,32 @@ CREATE TABLE IF NOT EXISTS writes (
             throw new Error('Failed to serialized checkpoint and metadata to the same type.');
         }
 
-        await this.db
-            .insertInto('checkpoints')
-            .values({
-                thread_id,
-                checkpoint_ns,
-                checkpoint_id: checkpoint.id,
-                parent_checkpoint_id: parent_checkpoint_id ?? null,
-                type: type1,
-                checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
-                metadata: new Uint8Array(Buffer.from(serializedMetadata)),
-            })
-            .onConflict((oc) =>
-                oc.columns(['thread_id', 'checkpoint_ns', 'checkpoint_id']).doUpdateSet({
-                    parent_checkpoint_id: parent_checkpoint_id ?? null,
-                    type: type1,
-                    checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
-                    metadata: new Uint8Array(Buffer.from(serializedMetadata)),
-                }),
-            )
-            .execute();
+        // 带重试的数据库操作
+        await withRetry(
+            async () => {
+                await this.db
+                    .insertInto('checkpoints')
+                    .values({
+                        thread_id,
+                        checkpoint_ns,
+                        checkpoint_id: checkpoint.id,
+                        parent_checkpoint_id: parent_checkpoint_id ?? null,
+                        type: type1,
+                        checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
+                        metadata: new Uint8Array(Buffer.from(serializedMetadata)),
+                    })
+                    .onConflict((oc) =>
+                        oc.columns(['thread_id', 'checkpoint_ns', 'checkpoint_id']).doUpdateSet({
+                            parent_checkpoint_id: parent_checkpoint_id ?? null,
+                            type: type1,
+                            checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
+                            metadata: new Uint8Array(Buffer.from(serializedMetadata)),
+                        }),
+                    )
+                    .execute();
+            },
+            `put(${thread_id}/${checkpoint.id})`,
+        );
 
         return {
             configurable: {
@@ -466,6 +531,7 @@ CREATE TABLE IF NOT EXISTS writes (
             throw new Error('Missing checkpoint_id field in config.configurable.');
         }
 
+        // 预先序列化所有数据（在事务外完成，减少锁持有时间）
         const values = await Promise.all(
             writes.map(async (write, idx) => {
                 const [type, serializedWrite] = await this.serde.dumpsTyped(write[1]);
@@ -482,30 +548,45 @@ CREATE TABLE IF NOT EXISTS writes (
             }),
         );
 
-        if (values.length > 0) {
-            await this.db.transaction().execute(async (trx) => {
-                for (const value of values) {
+        if (values.length === 0) return;
+
+        const threadId = config.configurable.thread_id;
+        const checkpointId = config.configurable.checkpoint_id;
+
+        // 带重试的批量插入
+        await withRetry(
+            async () => {
+                await this.db.transaction().execute(async (trx) => {
+                    // 先删除已存在的记录（比逐条 ON CONFLICT 更快）
                     await trx
-                        .insertInto('writes')
-                        .values(value)
-                        .onConflict((oc) =>
-                            oc.columns(['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx']).doUpdateSet({
-                                channel: value.channel,
-                                type: value.type,
-                                value: value.value,
-                            }),
-                        )
+                        .deleteFrom('writes')
+                        .where('thread_id', '=', threadId)
+                        .where('checkpoint_ns', '=', values[0].checkpoint_ns)
+                        .where('checkpoint_id', '=', checkpointId)
+                        .where('task_id', '=', taskId)
                         .execute();
-                }
-            });
-        }
+
+                    // 批量插入
+                    for (const value of values) {
+                        await trx.insertInto('writes').values(value).execute();
+                    }
+                });
+            },
+            `putWrites(${threadId}/${checkpointId}/${taskId})`,
+        );
     }
 
     async deleteThread(threadId: string) {
-        await this.db.transaction().execute(async (trx) => {
-            await trx.deleteFrom('checkpoints').where('thread_id', '=', threadId).execute();
-            await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
-        });
+        // 带重试的删除操作
+        await withRetry(
+            async () => {
+                await this.db.transaction().execute(async (trx) => {
+                    await trx.deleteFrom('checkpoints').where('thread_id', '=', threadId).execute();
+                    await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
+                });
+            },
+            `deleteThread(${threadId})`,
+        );
     }
 
     protected async migratePendingSends(checkpoint: Checkpoint, threadId: string, parentCheckpointId: string) {

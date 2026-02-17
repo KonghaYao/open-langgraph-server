@@ -46,16 +46,53 @@ export class SQLiteAdapter implements DatabaseAdapter {
         key: string,
         value: any,
     ): Expression<SqlBool> {
-        const jsonString = JSON.stringify(value);
-        
-        // 改进的 JSON 查询，添加 NULL 值处理
-        // json_extract 会返回 NULL 当键不存在或值为 NULL
-        return sql<boolean>`(
-            json_extract(${sql.ref(field)}, ${sql.lit('$.' + key)}) = ${sql.lit(jsonString)}
-        ) OR (
-            json_extract(${sql.ref(field)}, ${sql.lit('$.' + key)}) IS NULL
-            AND ${sql.lit(jsonString)} IS NULL
-        )`;
+        // SQLite json_extract 的行为:
+        // - 字符串: 返回不带引号的文本
+        // - 数字: 返回数字
+        // - 布尔值: 返回 1/0
+        // - null: 返回 NULL
+        // 所以比较时需要根据类型处理
+
+        // 构建 JSON 路径，包含特殊字符的键需要用双引号括起来
+        // 例如: user.name -> "$."user.name""
+        const escapedKey = key.includes('-') || key.includes('.') || key.includes(' ')
+            ? `"${key}"`
+            : key;
+        const jsonPath = `\$.${escapedKey}`;
+
+        let compareValue: any;
+        if (typeof value === 'string') {
+            // 字符串: json_extract 返回不带引号的字符串，直接比较
+            compareValue = value;
+        } else if (typeof value === 'number') {
+            // 数字: json_extract 返回数字
+            compareValue = value;
+        } else if (typeof value === 'boolean') {
+            // 布尔值: json_extract 返回 1/0
+            compareValue = value ? 1 : 0;
+        } else if (value === null) {
+            // null: json_extract 返回 NULL
+            compareValue = null;
+        } else {
+            // 其他类型（对象、数组）: 使用 JSON 字符串
+            compareValue = JSON.stringify(value);
+        }
+
+        // 构建 NULL 处理条件
+        // 注意：SQLite 中 json_extract 对键不存在和值为 null 都返回 NULL
+        // 我们需要检查 JSON 字符串中是否包含该键来区分这两种情况
+        if (value === null) {
+            // 检查键存在且值为 null
+            // 使用 json_extract IS NULL 并结合 JSON 字符串包含该键
+            const keyPattern = `"${key}":null`;
+            return sql<boolean>`
+                json_extract(${sql.ref(field)}, ${sql.lit(jsonPath)}) IS NULL
+                AND ${sql.ref(field)} LIKE ${sql.lit(`%${keyPattern}%`)}
+            `;
+        }
+
+        // 构建普通比较条件
+        return sql<boolean>`json_extract(${sql.ref(field)}, ${sql.lit(jsonPath)}) = ${sql.lit(compareValue)}`;
     }
 
     now(): string {

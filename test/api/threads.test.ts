@@ -10,6 +10,7 @@ import { registerGraph } from '../../src/createEndpoint';
 import { MessagesAnnotation } from '@langchain/langgraph';
 import { AIMessage } from 'langchain';
 import { handleRequest } from '../../src/adapter/fetch/index';
+import { LangGraphGlobal } from '../../src/global';
 
 describe('Threads API 测试', () => {
     const prepareClient = () => {
@@ -42,6 +43,9 @@ describe('Threads API 测试', () => {
     };
 
     beforeAll(async () => {
+        // 初始化全局组件（包括 storage 和 threads manager）
+        await LangGraphGlobal.initGlobal();
+
         // 注册测试图
         const simpleGraph = await createSimpleGraph();
         registerGraph('test-simple', simpleGraph);
@@ -124,13 +128,29 @@ describe('Threads API 测试', () => {
         // 注意：metadata filter 在 SQLite (BunWorkerDialect) 环境下存在已知问题
         // 这些测试在生产环境（PostgreSQL）中应该可以正常工作
         it('should search threads with metadata filter', async () => {
+            // 先查询所有线程
+            const allThreads = await client.threads.search();
+            console.log('All threads before create:', allThreads.length);
+
             const thread = await client.threads.create({
                 metadata: { key: 'test-value' },
             });
 
+            console.log('Created thread:', thread.thread_id, 'metadata:', thread.metadata);
+
+            // 查询所有线程确认创建成功
+            const allThreadsAfter = await client.threads.search();
+            console.log('All threads after create:', allThreadsAfter.length);
+            console.log('All threads metadata:', allThreadsAfter.map(t => ({ id: t.thread_id, metadata: t.metadata })));
+
+            // 搜索特定 metadata
             const threads = await client.threads.search({
                 metadata: { key: 'test-value' },
             });
+
+            console.log('Search result count:', threads.length);
+            console.log('Search results:', threads.map(t => ({ id: t.thread_id, metadata: t.metadata })));
+
             expect(Array.isArray(threads)).toBe(true);
             expect(threads.length).toBeGreaterThan(0);
         });

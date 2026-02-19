@@ -25,6 +25,8 @@ const SQLITE_RETRY_CONFIG = {
     baseDelayMs: 100,
     isRetryableError: (error: any): boolean => {
         const msg = error?.message?.toLowerCase() || '';
+        // 精确匹配 SQLITE_BUSY 和 database is locked
+        // 注意：不重试事务状态错误（如 cannot rollback），这些可能是结构性问题
         return (
             msg.includes('sqlite_busy') ||
             msg.includes('database is locked') ||
@@ -163,9 +165,11 @@ export class SqliteShallowSaver extends BaseCheckpointSaver {
         let saver: SqliteShallowSaver;
         /** @ts-ignore */
         if (globalThis.Bun) {
-            console.log('LG | Using BunWorkerDialect ' + connStringOrLocalPath);
-            const { BunWorkerDialect } = await import('kysely-bun-worker');
-            saver = new SqliteShallowSaver(new BunWorkerDialect({ url: connStringOrLocalPath }));
+            console.log('LG | Using BunSqliteDialect ' + connStringOrLocalPath);
+            const { BunSqliteDialect } = await import('kysely-bun-worker/normal');
+            // 使用 BunSqliteDialect（非 Worker 模式）避免 Worker 事务状态同步问题
+            // BunWorkerDialect 在高并发下可能出现 "cannot rollback - no transaction is active"
+            saver = new SqliteShallowSaver(new BunSqliteDialect({ url: connStringOrLocalPath }));
         } else {
             /** @ts-ignore */
             console.log('LG | Using NodeWasmDialect');

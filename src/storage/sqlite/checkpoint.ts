@@ -22,11 +22,11 @@ const SQLITE_RETRY_CONFIG = {
     baseDelayMs: 100,
     // 不可重试的错误模式
     nonRetryablePatterns: [
-        'database disk image is malformed',  // 数据库文件损坏
-        'database is malformed',               // 数据库损坏（短形式）
-        'cannot rollback',                     // 事务状态错误
-        'no transaction is active',            // 无活动事务
-        'database or disk is full',           // 磁盘空间不足
+        'database disk image is malformed', // 数据库文件损坏
+        'database is malformed', // 数据库损坏（短形式）
+        'cannot rollback', // 事务状态错误
+        'no transaction is active', // 无活动事务
+        'database or disk is full', // 磁盘空间不足
     ],
     isRetryableError: (error: any): boolean => {
         const msg = error?.message?.toLowerCase() || '';
@@ -67,17 +67,18 @@ async function withRetry<T>(operation: () => Promise<T>, context?: string): Prom
                 if (msg.includes('malformed')) {
                     const enhancedError = new Error(
                         `SQLite database is corrupted: ${error.message}\n\n` +
-                        `Context: ${context || 'unknown'}\n\n` +
-                        `Possible causes:\n` +
-                        `1. Database file was manually deleted or modified\n` +
-                        `2. Disk I/O errors during write operations\n` +
-                        `3. Concurrent access without proper locking\n\n` +
-                        `Recovery options:\n` +
-                        `- Delete the database file to start fresh (data will be lost)\n` +
-                        `- Use SQLite recovery tools: sqlite3 <db> ".recover" > recover.sql\n` +
-                        `- Switch to PostgreSQL/Redis for production use`
+                            `Context: ${context || 'unknown'}\n\n` +
+                            `Possible causes:\n` +
+                            `1. Database file was manually deleted or modified\n` +
+                            `2. Disk I/O errors during write operations\n` +
+                            `3. Concurrent access without proper locking\n\n` +
+                            `Recovery options:\n` +
+                            `- Delete the database file to start fresh (data will be lost)\n` +
+                            `- Use SQLite recovery tools: sqlite3 <db> ".recover" > recover.sql\n` +
+                            `- Switch to PostgreSQL/Redis for production use`,
                     );
                     enhancedError.name = 'SQLiteCorruptError';
+                    /** @ts-ignore */
                     enhancedError.cause = error;
                     throw enhancedError;
                 }
@@ -89,7 +90,9 @@ async function withRetry<T>(operation: () => Promise<T>, context?: string): Prom
             if (attempt < SQLITE_RETRY_CONFIG.maxRetries - 1) {
                 const delay = SQLITE_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
                 console.warn(
-                    `SQLite lock detected${context ? ` (${context})` : ''}, retrying in ${delay}ms (attempt ${attempt + 1}/${SQLITE_RETRY_CONFIG.maxRetries})`,
+                    `SQLite lock detected${context ? ` (${context})` : ''}, retrying in ${delay}ms (attempt ${
+                        attempt + 1
+                    }/${SQLITE_RETRY_CONFIG.maxRetries})`,
                 );
                 await new Promise((resolve) => setTimeout(resolve, delay));
             }
@@ -520,31 +523,28 @@ CREATE TABLE IF NOT EXISTS writes (
         }
 
         // 带重试的数据库操作
-        await withRetry(
-            async () => {
-                await this.db
-                    .insertInto('checkpoints')
-                    .values({
-                        thread_id,
-                        checkpoint_ns,
-                        checkpoint_id: checkpoint.id,
+        await withRetry(async () => {
+            await this.db
+                .insertInto('checkpoints')
+                .values({
+                    thread_id,
+                    checkpoint_ns,
+                    checkpoint_id: checkpoint.id,
+                    parent_checkpoint_id: parent_checkpoint_id ?? null,
+                    type: type1,
+                    checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
+                    metadata: new Uint8Array(Buffer.from(serializedMetadata)),
+                })
+                .onConflict((oc) =>
+                    oc.columns(['thread_id', 'checkpoint_ns', 'checkpoint_id']).doUpdateSet({
                         parent_checkpoint_id: parent_checkpoint_id ?? null,
                         type: type1,
                         checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
                         metadata: new Uint8Array(Buffer.from(serializedMetadata)),
-                    })
-                    .onConflict((oc) =>
-                        oc.columns(['thread_id', 'checkpoint_ns', 'checkpoint_id']).doUpdateSet({
-                            parent_checkpoint_id: parent_checkpoint_id ?? null,
-                            type: type1,
-                            checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
-                            metadata: new Uint8Array(Buffer.from(serializedMetadata)),
-                        }),
-                    )
-                    .execute();
-            },
-            `put(${thread_id}/${checkpoint.id})`,
-        );
+                    }),
+                )
+                .execute();
+        }, `put(${thread_id}/${checkpoint.id})`);
 
         return {
             configurable: {
@@ -593,39 +593,33 @@ CREATE TABLE IF NOT EXISTS writes (
         const checkpointId = config.configurable.checkpoint_id;
 
         // 带重试的批量插入
-        await withRetry(
-            async () => {
-                await this.db.transaction().execute(async (trx) => {
-                    // 先删除已存在的记录（比逐条 ON CONFLICT 更快）
-                    await trx
-                        .deleteFrom('writes')
-                        .where('thread_id', '=', threadId)
-                        .where('checkpoint_ns', '=', values[0].checkpoint_ns)
-                        .where('checkpoint_id', '=', checkpointId)
-                        .where('task_id', '=', taskId)
-                        .execute();
+        await withRetry(async () => {
+            await this.db.transaction().execute(async (trx) => {
+                // 先删除已存在的记录（比逐条 ON CONFLICT 更快）
+                await trx
+                    .deleteFrom('writes')
+                    .where('thread_id', '=', threadId)
+                    .where('checkpoint_ns', '=', values[0].checkpoint_ns)
+                    .where('checkpoint_id', '=', checkpointId)
+                    .where('task_id', '=', taskId)
+                    .execute();
 
-                    // 批量插入
-                    for (const value of values) {
-                        await trx.insertInto('writes').values(value).execute();
-                    }
-                });
-            },
-            `putWrites(${threadId}/${checkpointId}/${taskId})`,
-        );
+                // 批量插入
+                for (const value of values) {
+                    await trx.insertInto('writes').values(value).execute();
+                }
+            });
+        }, `putWrites(${threadId}/${checkpointId}/${taskId})`);
     }
 
     async deleteThread(threadId: string) {
         // 带重试的删除操作
-        await withRetry(
-            async () => {
-                await this.db.transaction().execute(async (trx) => {
-                    await trx.deleteFrom('checkpoints').where('thread_id', '=', threadId).execute();
-                    await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
-                });
-            },
-            `deleteThread(${threadId})`,
-        );
+        await withRetry(async () => {
+            await this.db.transaction().execute(async (trx) => {
+                await trx.deleteFrom('checkpoints').where('thread_id', '=', threadId).execute();
+                await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
+            });
+        }, `deleteThread(${threadId})`);
     }
 
     protected async migratePendingSends(checkpoint: Checkpoint, threadId: string, parentCheckpointId: string) {

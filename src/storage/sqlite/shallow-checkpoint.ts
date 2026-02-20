@@ -25,11 +25,11 @@ const SQLITE_RETRY_CONFIG = {
     baseDelayMs: 100,
     // 不可重试的错误模式
     nonRetryablePatterns: [
-        'database disk image is malformed',  // 数据库文件损坏
-        'database is malformed',               // 数据库损坏（短形式）
-        'cannot rollback',                     // 事务状态错误
-        'no transaction is active',            // 无活动事务
-        'database or disk is full',           // 磁盘空间不足
+        'database disk image is malformed', // 数据库文件损坏
+        'database is malformed', // 数据库损坏（短形式）
+        'cannot rollback', // 事务状态错误
+        'no transaction is active', // 无活动事务
+        'database or disk is full', // 磁盘空间不足
     ],
     isRetryableError: (error: any): boolean => {
         const msg = error?.message?.toLowerCase() || '';
@@ -70,17 +70,18 @@ async function withRetry<T>(operation: () => Promise<T>, context?: string): Prom
                 if (msg.includes('malformed')) {
                     const enhancedError = new Error(
                         `SQLite database is corrupted: ${error.message}\n\n` +
-                        `Context: ${context || 'unknown'}\n\n` +
-                        `Possible causes:\n` +
-                        `1. Database file was manually deleted or modified\n` +
-                        `2. Disk I/O errors during write operations\n` +
-                        `3. Concurrent access without proper locking\n\n` +
-                        `Recovery options:\n` +
-                        `- Delete the database file to start fresh (data will be lost)\n` +
-                        `- Use SQLite recovery tools: sqlite3 <db> ".recover" > recover.sql\n` +
-                        `- Switch to PostgreSQL/Redis for production use`
+                            `Context: ${context || 'unknown'}\n\n` +
+                            `Possible causes:\n` +
+                            `1. Database file was manually deleted or modified\n` +
+                            `2. Disk I/O errors during write operations\n` +
+                            `3. Concurrent access without proper locking\n\n` +
+                            `Recovery options:\n` +
+                            `- Delete the database file to start fresh (data will be lost)\n` +
+                            `- Use SQLite recovery tools: sqlite3 <db> ".recover" > recover.sql\n` +
+                            `- Switch to PostgreSQL/Redis for production use`,
                     );
                     enhancedError.name = 'SQLiteCorruptError';
+                    /** @ts-ignore */
                     enhancedError.cause = error;
                     throw enhancedError;
                 }
@@ -92,7 +93,9 @@ async function withRetry<T>(operation: () => Promise<T>, context?: string): Prom
             if (attempt < SQLITE_RETRY_CONFIG.maxRetries - 1) {
                 const delay = SQLITE_RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
                 console.warn(
-                    `SQLite lock detected${context ? ` (${context})` : ''}, retrying in ${delay}ms (attempt ${attempt + 1}/${SQLITE_RETRY_CONFIG.maxRetries})`,
+                    `SQLite lock detected${context ? ` (${context})` : ''}, retrying in ${delay}ms (attempt ${
+                        attempt + 1
+                    }/${SQLITE_RETRY_CONFIG.maxRetries})`,
                 );
                 await new Promise((resolve) => setTimeout(resolve, delay));
             }
@@ -350,12 +353,14 @@ CREATE TABLE IF NOT EXISTS writes (
 
         // 反序列化 pending writes
         const pendingWrites = await Promise.all(
-            (JSON.parse(row.pending_writes || '[]') as Array<{
-                task_id: string;
-                channel: string;
-                type: string;
-                value: string;
-            }>).map(async (write) => {
+            (
+                JSON.parse(row.pending_writes || '[]') as Array<{
+                    task_id: string;
+                    channel: string;
+                    type: string;
+                    value: string;
+                }>
+            ).map(async (write) => {
                 return [
                     write.task_id,
                     write.channel,
@@ -470,12 +475,14 @@ CREATE TABLE IF NOT EXISTS writes (
             }
 
             const pendingWrites = await Promise.all(
-                (JSON.parse(row.pending_writes || '[]') as Array<{
-                    task_id: string;
-                    channel: string;
-                    type: string;
-                    value: string;
-                }>).map(async (write) => {
+                (
+                    JSON.parse(row.pending_writes || '[]') as Array<{
+                        task_id: string;
+                        channel: string;
+                        type: string;
+                        value: string;
+                    }>
+                ).map(async (write) => {
                     return [
                         write.task_id,
                         write.channel,
@@ -582,55 +589,52 @@ CREATE TABLE IF NOT EXISTS writes (
         const checkpointId_ = checkpointId;
 
         // 带重试的数据库操作
-        await withRetry(
-            async () => {
-                await this.db.transaction().execute(async (trx) => {
-                    // 获取旧的 checkpoint_id 用于清理 writes
-                    const oldCheckpoint = await trx
-                        .selectFrom('shallow_checkpoints')
-                        .select(['checkpoint_id'])
+        await withRetry(async () => {
+            await this.db.transaction().execute(async (trx) => {
+                // 获取旧的 checkpoint_id 用于清理 writes
+                const oldCheckpoint = await trx
+                    .selectFrom('shallow_checkpoints')
+                    .select(['checkpoint_id'])
+                    .where('thread_id', '=', threadId_)
+                    .where('checkpoint_ns', '=', checkpointNs_)
+                    .executeTakeFirst();
+
+                // 如果存在旧的 checkpoint 且 id 不同，清理旧的 writes
+                if (oldCheckpoint && oldCheckpoint.checkpoint_id !== checkpointId_) {
+                    await trx
+                        .deleteFrom('writes')
                         .where('thread_id', '=', threadId_)
                         .where('checkpoint_ns', '=', checkpointNs_)
-                        .executeTakeFirst();
+                        .where('checkpoint_id', '=', oldCheckpoint.checkpoint_id)
+                        .execute();
+                }
 
-                    // 如果存在旧的 checkpoint 且 id 不同，清理旧的 writes
-                    if (oldCheckpoint && oldCheckpoint.checkpoint_id !== checkpointId_) {
-                        await trx
-                            .deleteFrom('writes')
-                            .where('thread_id', '=', threadId_)
-                            .where('checkpoint_ns', '=', checkpointNs_)
-                            .where('checkpoint_id', '=', oldCheckpoint.checkpoint_id)
-                            .execute();
-                    }
-
-                    // 使用 INSERT OR REPLACE (UPSERT) 覆盖写入
-                    await trx
-                        .insertInto('shallow_checkpoints')
-                        .values({
-                            thread_id: threadId_,
-                            checkpoint_ns: checkpointNs_,
+                // 使用 INSERT OR REPLACE (UPSERT) 覆盖写入
+                await trx
+                    .insertInto('shallow_checkpoints')
+                    .values({
+                        thread_id: threadId_,
+                        checkpoint_ns: checkpointNs_,
+                        checkpoint_id: checkpointId_,
+                        parent_checkpoint_id: parentCheckpointId ?? null,
+                        type: type1,
+                        checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
+                        metadata: new Uint8Array(Buffer.from(serializedMetadata)),
+                        checkpoint_ts: Date.now(),
+                    })
+                    .onConflict((oc) =>
+                        oc.columns(['thread_id', 'checkpoint_ns']).doUpdateSet({
                             checkpoint_id: checkpointId_,
                             parent_checkpoint_id: parentCheckpointId ?? null,
                             type: type1,
                             checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
                             metadata: new Uint8Array(Buffer.from(serializedMetadata)),
                             checkpoint_ts: Date.now(),
-                        })
-                        .onConflict((oc) =>
-                            oc.columns(['thread_id', 'checkpoint_ns']).doUpdateSet({
-                                checkpoint_id: checkpointId_,
-                                parent_checkpoint_id: parentCheckpointId ?? null,
-                                type: type1,
-                                checkpoint: new Uint8Array(Buffer.from(serializedCheckpoint)),
-                                metadata: new Uint8Array(Buffer.from(serializedMetadata)),
-                                checkpoint_ts: Date.now(),
-                            }),
-                        )
-                        .execute();
-                });
-            },
-            `put(${threadId}/${checkpointId})`,
-        );
+                        }),
+                    )
+                    .execute();
+            });
+        }, `put(${threadId}/${checkpointId})`);
 
         return {
             configurable: {
@@ -672,38 +676,32 @@ CREATE TABLE IF NOT EXISTS writes (
         if (values.length === 0) return;
 
         // 带重试的批量插入
-        await withRetry(
-            async () => {
-                await this.db.transaction().execute(async (trx) => {
-                    // 先删除已存在的记录
-                    await trx
-                        .deleteFrom('writes')
-                        .where('thread_id', '=', threadId)
-                        .where('checkpoint_ns', '=', checkpointNs)
-                        .where('checkpoint_id', '=', checkpointId)
-                        .where('task_id', '=', taskId)
-                        .execute();
+        await withRetry(async () => {
+            await this.db.transaction().execute(async (trx) => {
+                // 先删除已存在的记录
+                await trx
+                    .deleteFrom('writes')
+                    .where('thread_id', '=', threadId)
+                    .where('checkpoint_ns', '=', checkpointNs)
+                    .where('checkpoint_id', '=', checkpointId)
+                    .where('task_id', '=', taskId)
+                    .execute();
 
-                    // 批量插入
-                    for (const value of values) {
-                        await trx.insertInto('writes').values(value).execute();
-                    }
-                });
-            },
-            `putWrites(${threadId}/${checkpointId}/${taskId})`,
-        );
+                // 批量插入
+                for (const value of values) {
+                    await trx.insertInto('writes').values(value).execute();
+                }
+            });
+        }, `putWrites(${threadId}/${checkpointId}/${taskId})`);
     }
 
     async deleteThread(threadId: string): Promise<void> {
-        await withRetry(
-            async () => {
-                await this.db.transaction().execute(async (trx) => {
-                    await trx.deleteFrom('shallow_checkpoints').where('thread_id', '=', threadId).execute();
-                    await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
-                });
-            },
-            `deleteThread(${threadId})`,
-        );
+        await withRetry(async () => {
+            await this.db.transaction().execute(async (trx) => {
+                await trx.deleteFrom('shallow_checkpoints').where('thread_id', '=', threadId).execute();
+                await trx.deleteFrom('writes').where('thread_id', '=', threadId).execute();
+            });
+        }, `deleteThread(${threadId})`);
     }
 
     protected async migratePendingSends(checkpoint: Checkpoint, threadId: string, parentCheckpointId: string) {

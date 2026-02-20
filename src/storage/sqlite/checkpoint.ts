@@ -20,14 +20,28 @@ import {
 const SQLITE_RETRY_CONFIG = {
     maxRetries: 3,
     baseDelayMs: 100,
+    // 不可重试的错误模式
+    nonRetryablePatterns: [
+        'database disk image is malformed',  // 数据库文件损坏
+        'database is malformed',               // 数据库损坏（短形式）
+        'cannot rollback',                     // 事务状态错误
+        'no transaction is active',            // 无活动事务
+        'database or disk is full',           // 磁盘空间不足
+    ],
     isRetryableError: (error: any): boolean => {
         const msg = error?.message?.toLowerCase() || '';
-        // 精确匹配 SQLITE_BUSY 和 database is locked
-        // 注意：不重试事务状态错误（如 cannot rollback），这些可能是结构性问题
+
+        // 检查是否为不可重试的错误
+        for (const pattern of SQLITE_RETRY_CONFIG.nonRetryablePatterns) {
+            if (msg.includes(pattern.toLowerCase())) {
+                return false;
+            }
+        }
+
+        // 只重试锁相关的错误
         return (
             msg.includes('sqlite_busy') ||
             msg.includes('database is locked') ||
-            msg.includes('database disk image is malformed') ||
             msg === 'sqlite_busy' ||
             msg === 'database is locked'
         );
@@ -45,8 +59,30 @@ async function withRetry<T>(operation: () => Promise<T>, context?: string): Prom
             return await operation();
         } catch (error: any) {
             lastError = error;
+            const msg = error?.message?.toLowerCase() || '';
 
+            // 检查是否为严重错误（不可重试）
             if (!SQLITE_RETRY_CONFIG.isRetryableError(error)) {
+                // 为数据库损坏错误提供额外的诊断信息
+                if (msg.includes('malformed')) {
+                    const enhancedError = new Error(
+                        `SQLite database is corrupted: ${error.message}\n\n` +
+                        `Context: ${context || 'unknown'}\n\n` +
+                        `Possible causes:\n` +
+                        `1. Database file was manually deleted or modified\n` +
+                        `2. Disk I/O errors during write operations\n` +
+                        `3. Concurrent access without proper locking\n\n` +
+                        `Recovery options:\n` +
+                        `- Delete the database file to start fresh (data will be lost)\n` +
+                        `- Use SQLite recovery tools: sqlite3 <db> ".recover" > recover.sql\n` +
+                        `- Switch to PostgreSQL/Redis for production use`
+                    );
+                    enhancedError.name = 'SQLiteCorruptError';
+                    enhancedError.cause = error;
+                    throw enhancedError;
+                }
+
+                // 其他不可重试错误直接抛出
                 throw error;
             }
 

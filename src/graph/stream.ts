@@ -241,19 +241,26 @@ export async function* streamState(
     const queueId = run.run_id;
     const threadId = run.thread_id;
     let state: AsyncGenerator<EventMessage, void, unknown> | null = null;
-    
+    let queue: BaseStreamQueueInterface | null = null;
+    let backgroundTask: Promise<void> | null = null;
+    let isCleaningUp = false;
+
     try {
         // 启动队列推送任务（在后台异步执行）
         await threads.set(threadId, { status: 'busy' });
         await threads.updateRun(run.run_id, { status: 'running' });
-        const queue = LangGraphGlobal.globalMessageQueue.createQueue(queueId);
+        queue = LangGraphGlobal.globalMessageQueue.createQueue(queueId);
         state = queue.onDataReceive();
-        streamStateWithQueue(threads, run, queue, payload, options).catch((error) => {
+
+        // 追踪后台任务
+        backgroundTask = streamStateWithQueue(threads, run, queue, payload, options).catch((error) => {
+            // 如果是因为清理导致的取消，不记录错误
+            if (isCleaningUp) return;
             if (error.message !== 'user cancel this run') console.error('Queue task error:', error);
             // 如果生产者出错，向队列推送错误信号
             LangGraphGlobal.globalMessageQueue.pushToQueue(queueId, new StreamErrorEventMessage(error));
-            // TODO 不知道这里需不需要错误处理
         });
+
         for await (const data of state) {
             yield data;
         }
@@ -265,6 +272,8 @@ export async function* streamState(
         await threads.set(threadId, { status: 'error' });
         // throw error;
     } finally {
+        isCleaningUp = true;
+
         // 确保清理生成器
         if (state) {
             try {
@@ -273,6 +282,28 @@ export async function* streamState(
                 // 忽略生成器清理错误
             }
             state = null;
+        }
+
+        // 取消后台任务：先取消队列的信号，让后台任务能检测到
+        if (queue && !queue.cancelSignal.signal.aborted) {
+            try {
+                queue.cancelSignal.abort('Stream consumer disconnected');
+            } catch (e) {
+                // 忽略取消错误
+            }
+        }
+
+        // 等待后台任务完成（带超时）
+        if (backgroundTask) {
+            try {
+                await Promise.race([
+                    backgroundTask,
+                    new Promise<void>((resolve) => setTimeout(resolve, 1000)),
+                ]);
+            } catch (e) {
+                // 忽略后台任务错误
+            }
+            backgroundTask = null;
         }
 
         const nowState = await threads.get(threadId);
@@ -285,5 +316,6 @@ export async function* streamState(
         }
         // 清空队列数据并释放资源
         await LangGraphGlobal.globalMessageQueue.removeQueue(queueId);
+        queue = null;
     }
 }

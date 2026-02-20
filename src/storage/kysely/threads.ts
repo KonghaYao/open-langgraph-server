@@ -44,6 +44,9 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         supersteps?: Array<{ updates: Array<{ values: unknown; command?: Command; asNode: string }> }>;
     }): Promise<Thread<ValuesType>> {
         const threadId = payload?.threadId || v7();
+        const now = new Date();
+        const metadata = payload?.metadata || {};
+        const interrupts = {};
 
         // 检查线程是否已存在
         if (payload?.ifExists === 'raise') {
@@ -58,9 +61,26 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             }
         }
 
-        const now = new Date();
-        const metadata = payload?.metadata || {};
-        const interrupts = {};
+        // 如果指定了 ifExists='do_nothing'，使用 ON CONFLICT DO NOTHING
+        if (payload?.ifExists === 'do_nothing' && payload?.threadId) {
+            const existing = await this.db
+                .selectFrom('threads')
+                .selectAll()
+                .where('thread_id', '=', threadId)
+                .executeTakeFirst();
+
+            if (existing) {
+                return {
+                    thread_id: existing.thread_id,
+                    created_at: this.adapter.dbToDate(existing.created_at).toISOString(),
+                    updated_at: this.adapter.dbToDate(existing.updated_at).toISOString(),
+                    metadata: this.adapter.dbToJson(existing.metadata),
+                    status: existing.status as ThreadStatus,
+                    values: existing.values ? this.adapter.dbToJson(existing.values) : (null as unknown as ValuesType),
+                    interrupts: this.adapter.dbToJson(existing.interrupts),
+                };
+            }
+        }
 
         // 插入数据
         await this.db

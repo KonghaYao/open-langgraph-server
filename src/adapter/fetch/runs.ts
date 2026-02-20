@@ -41,12 +41,47 @@ export async function streamRun(req: Request, context: LangGraphServerContext): 
                     Object.assign(payload.config.configurable, langgraphContext);
                 }
 
-                for await (const { event, data } of client.runs.stream(
-                    thread_id,
-                    payload.assistant_id,
-                    camelcaseKeys(payload) as any,
-                )) {
-                    await writer.writeSSE({ data: serialiseAsDict(data) ?? '', event });
+                let generator: AsyncGenerator<{ event: string; data: any }> | null = null;
+                let isCleaningUp = false;
+
+                // 监听中止信号
+                const abortHandler = () => {
+                    isCleaningUp = true;
+                    // 生成器会在下一次迭代时检查 isCleaningUp 并退出
+                };
+                writer.signal.addEventListener('abort', abortHandler);
+
+                try {
+                    generator = client.runs.stream(
+                        thread_id,
+                        payload.assistant_id,
+                        camelcaseKeys(payload) as any,
+                    );
+
+                    for await (const { event, data } of generator) {
+                        // 检查是否需要中断
+                        if (isCleaningUp || writer.signal.aborted) {
+                            break;
+                        }
+                        await writer.writeSSE({ data: serialiseAsDict(data) ?? '', event });
+                    }
+                } catch (error) {
+                    // 忽略因中止导致的错误
+                    if (!writer.signal.aborted && !isCleaningUp) {
+                        throw error;
+                    }
+                } finally {
+                    writer.signal.removeEventListener('abort', abortHandler);
+
+                    // 显式清理生成器
+                    if (generator) {
+                        try {
+                            await generator.return(undefined);
+                        } catch (e) {
+                            // 忽略生成器清理错误
+                        }
+                        generator = null;
+                    }
                 }
             }),
         );
@@ -69,24 +104,41 @@ export async function joinRunStream(req: Request, context: LangGraphServerContex
         return createSSEStream(
             withHeartbeat(async (writer) => {
                 const controller = new AbortController();
-                let cleanup: (() => void) | null = null;
+                let generator: AsyncGenerator<{ id?: string; event: any; data: any }> | null = null;
+                let isCleaningUp = false;
+                const abortHandlers: Array<{ signal: AbortSignal; handler: () => void }> = [];
 
-                if (cancel_on_disconnect) {
-                    cleanup = () => {
-                        controller.abort('Client disconnected');
-                    };
+                const cleanup = () => {
+                    controller.abort('Client disconnected');
+                };
 
-                    // 监听请求的 abort 信号
-                    req.signal?.addEventListener('abort', cleanup);
+                // 监听请求的 abort 信号
+                if (req.signal) {
+                    req.signal.addEventListener('abort', cleanup);
+                    abortHandlers.push({ signal: req.signal, handler: cleanup });
                 }
 
+                // 监听 SSE writer 的 abort 信号
+                const writerAbortHandler = () => {
+                    isCleaningUp = true;
+                    controller.abort('SSE stream closed');
+                };
+                writer.signal.addEventListener('abort', writerAbortHandler);
+                abortHandlers.push({ signal: writer.signal, handler: writerAbortHandler });
+
                 try {
-                    for await (const { event, data, id } of client.runs.joinStream(thread_id, run_id, {
+                    generator = client.runs.joinStream(thread_id, run_id, {
                         signal: controller.signal,
                         cancelOnDisconnect: cancel_on_disconnect,
                         lastEventId: last_event_id,
                         streamMode: stream_mode ? [stream_mode] : undefined,
-                    })) {
+                    });
+
+                    for await (const { event, data, id } of generator) {
+                        // 检查是否需要中断
+                        if (isCleaningUp || writer.signal.aborted || controller.signal.aborted) {
+                            break;
+                        }
                         await writer.writeSSE({
                             data: serialiseAsDict(data) ?? '',
                             event: event as unknown as string,
@@ -94,7 +146,9 @@ export async function joinRunStream(req: Request, context: LangGraphServerContex
                         });
                     }
                 } catch (error) {
-                    if (!(error instanceof Error) || !error.message.includes('user cancel')) {
+                    // 忽略因中止导致的错误
+                    const isAbortError = controller.signal.aborted || writer.signal.aborted;
+                    if (!isAbortError && !(error instanceof Error && error.message.includes('user cancel'))) {
                         console.error('Join stream error:', error);
                         await writer.writeSSE({
                             event: 'error',
@@ -104,9 +158,23 @@ export async function joinRunStream(req: Request, context: LangGraphServerContex
                         });
                     }
                 } finally {
-                    // 移除 abort 事件监听器
-                    if (cleanup && req.signal) {
-                        req.signal.removeEventListener('abort', cleanup);
+                    // 移除所有 abort 事件监听器
+                    for (const { signal, handler } of abortHandlers) {
+                        try {
+                            signal.removeEventListener('abort', handler);
+                        } catch (e) {
+                            // 忽略错误
+                        }
+                    }
+
+                    // 显式清理生成器
+                    if (generator) {
+                        try {
+                            await generator.return(undefined);
+                        } catch (e) {
+                            // 忽略生成器清理错误
+                        }
+                        generator = null;
                     }
                 }
             }),

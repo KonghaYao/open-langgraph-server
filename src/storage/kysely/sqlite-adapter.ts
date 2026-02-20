@@ -77,13 +77,23 @@ export class SQLiteAdapter implements DatabaseAdapter {
         // - null: 返回 NULL
         // 所以比较时需要根据类型处理
 
-        // 构建 JSON 路径，包含特殊字符的键需要用双引号括起来
-        // 例如: user.name -> "$."user.name""
-        const escapedKey = key.includes('-') || key.includes('.') || key.includes(' ')
-            ? `"${key}"`
-            : key;
-        const jsonPath = `\$.${escapedKey}`;
+        // 构建 JSON 路径
+        // 在 SQLite 中，所有键都需要用双引号括起来以确保正确解析
+        // json_extract 语法: $.key 或 $."key-with-special"
+        const jsonPath = `$.${JSON.stringify(key)}`;
 
+        // 构建 NULL 处理条件
+        // 注意：SQLite 中 json_extract 对键不存在和值为 null 都返回 NULL
+        // 使用 json_type 函数区分：
+        // - 键不存在：json_type 返回 NULL
+        // - 值为 null：json_type 返回 'null' 字符串
+        if (value === null) {
+            return sql<boolean>`
+                json_type(${sql.ref(field)}, ${sql.lit(jsonPath)}) = 'null'
+            `;
+        }
+
+        // 处理其他类型的值
         let compareValue: any;
         if (typeof value === 'string') {
             // 字符串: json_extract 返回不带引号的字符串，直接比较
@@ -94,25 +104,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
         } else if (typeof value === 'boolean') {
             // 布尔值: json_extract 返回 1/0
             compareValue = value ? 1 : 0;
-        } else if (value === null) {
-            // null: json_extract 返回 NULL
-            compareValue = null;
         } else {
             // 其他类型（对象、数组）: 使用 JSON 字符串
             compareValue = JSON.stringify(value);
-        }
-
-        // 构建 NULL 处理条件
-        // 注意：SQLite 中 json_extract 对键不存在和值为 null 都返回 NULL
-        // 我们需要检查 JSON 字符串中是否包含该键来区分这两种情况
-        if (value === null) {
-            // 检查键存在且值为 null
-            // 使用 json_extract IS NULL 并结合 JSON 字符串包含该键
-            const keyPattern = `"${key}":null`;
-            return sql<boolean>`
-                json_extract(${sql.ref(field)}, ${sql.lit(jsonPath)}) IS NULL
-                AND ${sql.ref(field)} LIKE ${sql.lit(`%${keyPattern}%`)}
-            `;
         }
 
         // 构建普通比较条件

@@ -19,6 +19,19 @@ const show_form = tool(
         }),
     },
 );
+const count = tool(
+    (props) => {
+        console.log(props);
+        return 'good, it is ' + props.number;
+    },
+    {
+        name: 'count',
+        description: '计数器',
+        schema: z.object({
+            number: z.number(),
+        }),
+    },
+);
 const interrupt_test = tool(
     (props) => {
         console.log(props);
@@ -46,7 +59,7 @@ export const graph = new StateGraph(State)
             }),
             systemPrompt: '你是一个智能助手',
             stateSchema: State,
-            tools: [show_form, interrupt_test],
+            tools: [show_form, interrupt_test, count],
             middleware: [
                 humanInTheLoopMiddleware({
                     interruptOn: {
@@ -55,7 +68,7 @@ export const graph = new StateGraph(State)
                 }),
             ],
         });
-        const newState = await agent.invoke(state);
+        const newState = await agent.invoke(state, { recursionLimit: 500 });
         return newState;
     })
     .addEdge('__start__', 'test-entrypoint')

@@ -103,21 +103,39 @@ export function errorResponse(error: unknown, status = 500): Response {
 }
 
 /**
+ * SSE Writer 基础接口
+ */
+export interface SSEWriter {
+    writeSSE: (data: { data: string; event?: string; id?: string }) => Promise<void>;
+    close: () => void;
+}
+
+/**
+ * 扩展的 SSE Writer 接口，包含中止信号
+ */
+export interface SSEWriterWithAbort extends SSEWriter {
+    /** 当客户端断开连接时触发的中止信号 */
+    signal: AbortSignal;
+}
+
+/**
  * 创建 SSE 流响应
  */
-export function createSSEStream(streamFn: (writer: SSEWriter) => Promise<void>): Response {
+export function createSSEStream(streamFn: (writer: SSEWriterWithAbort) => Promise<void>): Response {
     let controller: ReadableStreamDefaultController<Uint8Array>;
     let isClosed = false;
+    const abortController = new AbortController();
 
     const stream = new ReadableStream<Uint8Array>({
         async start(ctrl) {
             controller = ctrl;
             const encoder = new TextEncoder();
 
-            const writer: SSEWriter = {
+            const writer: SSEWriterWithAbort = {
+                signal: abortController.signal,
                 writeSSE: async ({ data, event, id }) => {
-                    // 检查流是否已关闭
-                    if (isClosed) {
+                    // 检查流是否已关闭或已中止
+                    if (isClosed || abortController.signal.aborted) {
                         return;
                     }
 
@@ -135,7 +153,7 @@ export function createSSEStream(streamFn: (writer: SSEWriter) => Promise<void>):
                         controller.enqueue(encoder.encode(message));
                     } catch (error) {
                         // 忽略写入已关闭流的错误
-                        if (!isClosed) {
+                        if (!isClosed && !abortController.signal.aborted) {
                             throw error;
                         }
                     }
@@ -155,7 +173,10 @@ export function createSSEStream(streamFn: (writer: SSEWriter) => Promise<void>):
             try {
                 await streamFn(writer);
             } catch (error) {
-                console.error('SSE stream error:', error);
+                // 忽略因中止导致的错误
+                if (!abortController.signal.aborted) {
+                    console.error('SSE stream error:', error);
+                }
             } finally {
                 if (!isClosed) {
                     isClosed = true;
@@ -169,6 +190,10 @@ export function createSSEStream(streamFn: (writer: SSEWriter) => Promise<void>):
         },
         cancel() {
             isClosed = true;
+            // 触发中止信号，通知内部流停止
+            if (!abortController.signal.aborted) {
+                abortController.abort('Client disconnected');
+            }
         },
     });
 
@@ -181,36 +206,16 @@ export function createSSEStream(streamFn: (writer: SSEWriter) => Promise<void>):
     });
 }
 
-export interface SSEWriter {
-    writeSSE: (data: { data: string; event?: string; id?: string }) => Promise<void>;
-    close: () => void;
-}
-
 /**
  * 为 SSE 流添加心跳功能
  */
 export function withHeartbeat(
-    streamFn: (writer: SSEWriter) => Promise<void>,
+    streamFn: (writer: SSEWriterWithAbort) => Promise<void>,
     heartbeatInterval: number = process.env.HEARTBEAT_INTERVAL ? parseInt(process.env.HEARTBEAT_INTERVAL) : 1500,
-): (writer: SSEWriter) => Promise<void> {
-    return async (writer: SSEWriter) => {
-        let heartbeatTimer: NodeJS.Timeout | null = null;
-
-        const startHeartbeat = () => {
-            if (heartbeatTimer) {
-                clearInterval(heartbeatTimer);
-            }
-            heartbeatTimer = setInterval(async () => {
-                try {
-                    await writer.writeSSE({ event: 'ping', data: '{}' });
-                } catch (error) {
-                    if (heartbeatTimer) {
-                        clearInterval(heartbeatTimer);
-                        heartbeatTimer = null;
-                    }
-                }
-            }, heartbeatInterval);
-        };
+): (writer: SSEWriterWithAbort) => Promise<void> {
+    return async (writer: SSEWriterWithAbort) => {
+        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+        let isCleaningUp = false;
 
         const stopHeartbeat = () => {
             if (heartbeatTimer) {
@@ -219,11 +224,42 @@ export function withHeartbeat(
             }
         };
 
-        const proxiedWriter: SSEWriter = {
+        const startHeartbeat = () => {
+            stopHeartbeat();
+            heartbeatTimer = setInterval(async () => {
+                // 检查是否已中止
+                if (writer.signal.aborted || isCleaningUp) {
+                    stopHeartbeat();
+                    return;
+                }
+                try {
+                    await writer.writeSSE({ event: 'ping', data: '{}' });
+                } catch (error) {
+                    // 写入失败（可能是流已关闭），停止心跳
+                    stopHeartbeat();
+                }
+            }, heartbeatInterval);
+        };
+
+        // 监听中止信号，停止心跳
+        const abortHandler = () => {
+            stopHeartbeat();
+        };
+        writer.signal.addEventListener('abort', abortHandler);
+
+        const proxiedWriter: SSEWriterWithAbort = {
+            signal: writer.signal,
             writeSSE: async (data) => {
+                // 如果已中止，不再写入
+                if (writer.signal.aborted) {
+                    return;
+                }
                 stopHeartbeat();
                 await writer.writeSSE(data);
-                startHeartbeat();
+                // 只有在未中止时才重启心跳
+                if (!writer.signal.aborted) {
+                    startHeartbeat();
+                }
             },
             close: () => {
                 stopHeartbeat();
@@ -236,7 +272,9 @@ export function withHeartbeat(
         try {
             await streamFn(proxiedWriter);
         } finally {
+            isCleaningUp = true;
             stopHeartbeat();
+            writer.signal.removeEventListener('abort', abortHandler);
         }
     };
 }

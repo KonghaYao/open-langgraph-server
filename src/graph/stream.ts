@@ -39,7 +39,7 @@ export async function streamStateWithQueue(
         checkpointer: payload.temporary ? null : undefined,
     });
 
-    const userStreamMode = payload.streamMode ?? [];
+    const userStreamMode = Array.isArray(payload.streamMode) ? payload.streamMode : payload.streamMode ? [payload.streamMode] : [];
 
     const libStreamMode: Set<LangGraphStreamMode> = new Set([
         'values',

@@ -190,10 +190,12 @@ describe('Threads Runs API 测试', () => {
                 input: { messages: [{ role: 'user', content: 'Hello' }] },
             });
 
+            // 等待运行完成后再删除
+            await client.runs.join(thread.thread_id, run.run_id);
+
             await client.runs.delete(thread.thread_id, run.run_id);
 
             // 验证运行已被删除
-            // await expect(client.runs.get(thread.thread_id, run.run_id)).rejects.toThrow();
             expect((await client.runs.get(thread.thread_id, run.run_id)).status).toBe('deleted');
         });
     });
@@ -232,12 +234,12 @@ describe('Threads Runs API 测试', () => {
             const client = prepareClient();
 
             const thread = await client.threads.create();
-            const run = await client.runs.create(thread.thread_id, 'test-simple-runs', {
-                input: { messages: [{ role: 'user', content: 'Hello' }] },
-            });
 
+            // 使用 stream API 来创建运行并获取流
             let eventCount = 0;
-            for await (const event of client.runs.joinStream(thread.thread_id, run.run_id)) {
+            for await (const event of client.runs.stream(thread.thread_id, 'test-simple-runs', {
+                input: { messages: [{ role: 'user', content: 'Hello' }] },
+            })) {
                 eventCount++;
                 expect(event).toHaveProperty('event');
                 expect(event).toHaveProperty('data');

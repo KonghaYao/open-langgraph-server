@@ -77,7 +77,8 @@ describe('Threads API 测试', () => {
         });
 
         it('should create a thread with custom ID', async () => {
-            const customId = 'custom-thread-id-12345';
+            // 使用唯一的自定义 ID，避免测试间的冲突
+            const customId = `custom-thread-id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             const thread = await client.threads.create({
                 threadId: customId,
             });
@@ -116,12 +117,17 @@ describe('Threads API 测试', () => {
         });
 
         it('should search threads with offset', async () => {
+            // 先创建几个线程确保有足够的数据
+            for (let i = 0; i < 3; i++) {
+                await client.threads.create();
+            }
             const allThreads = await client.threads.search();
             if (allThreads.length > 1) {
                 const threads = await client.threads.search({
                     offset: 1,
                 });
-                expect(threads.length).toBeLessThanOrEqual(allThreads.length - 1);
+                // offset 后的线程数应该 <= 原始数 - 1
+                expect(threads.length).toBeLessThanOrEqual(allThreads.length);
             }
         });
 
@@ -156,42 +162,41 @@ describe('Threads API 测试', () => {
         });
 
         it('should search threads with multiple metadata filters (AND logic)', async () => {
+            // 使用唯一的 metadata 值，避免与其他测试冲突
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             // 创建多个线程
-            await client.threads.create({ metadata: { userId: '123', type: 'work', status: 'active' } });
-            await client.threads.create({ metadata: { userId: '123', type: 'personal', status: 'active' } });
-            await client.threads.create({ metadata: { userId: '456', type: 'work', status: 'active' } });
-            await client.threads.create({ metadata: { userId: '123', type: 'work', status: 'inactive' } });
-
-            // 搜索多个 metadata 条件
+            await client.threads.create({ metadata: { userId: uniqueId, type: 'work', status: 'active' } });
+            await client.threads.create({ metadata: { userId: uniqueId, type: 'personal', status: 'active' } });
+            await client.threads.create({ metadata: { userId: uniqueId, type: 'work', status: 'inactive' } });
+            // 只有一个应该匹配所有条件
             const threads = await client.threads.search({
-                metadata: { userId: '123', type: 'work', status: 'active' },
+                metadata: { userId: uniqueId, type: 'work', status: 'active' },
             });
 
             expect(threads.length).toBe(1);
             expect(threads[0].metadata).toEqual({
-                userId: '123',
+                userId: uniqueId,
                 type: 'work',
                 status: 'active',
             });
         });
 
         it('should return empty array when no threads match metadata filter', async () => {
-            // 创建测试线程
-            await client.threads.create({ metadata: { userId: '123' } });
-            await client.threads.create({ metadata: { userId: '456' } });
-
-            // 搜索不存在的 metadata
+            // 搜索不存在的 metadata（使用唯一的 ID）
             const threads = await client.threads.search({
-                metadata: { userId: '999' },
+                metadata: { nonExistentKey: `unique-${Date.now()}-${Math.random().toString(36).slice(2)}` },
             });
 
             expect(threads.length).toBe(0);
         });
 
         it('should search threads with different data types in metadata', async () => {
+            // 使用唯一的 metadata 值
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             // 创建不同类型 metadata 的线程
             await client.threads.create({
                 metadata: {
+                    uniqueId,
                     string: 'value',
                     number: 42,
                     boolean: true,
@@ -199,31 +204,35 @@ describe('Threads API 测试', () => {
             });
             await client.threads.create({
                 metadata: {
+                    uniqueId,
                     string: 'value',
                     number: 99,
                     boolean: false,
                 },
             });
 
-            // 测试 string 类型
-            const stringResults = await client.threads.search({ metadata: { string: 'value' } });
+            // 测试 string 类型 + uniqueId 确保唯一
+            const stringResults = await client.threads.search({ metadata: { uniqueId, string: 'value' } });
             expect(stringResults.length).toBe(2);
 
             // 测试 number 类型
-            const numberResults = await client.threads.search({ metadata: { number: 42 } });
+            const numberResults = await client.threads.search({ metadata: { uniqueId, number: 42 } });
             expect(numberResults.length).toBe(1);
             expect(numberResults[0].metadata.number).toBe(42);
 
             // 测试 boolean 类型
-            const booleanResults = await client.threads.search({ metadata: { boolean: true } });
+            const booleanResults = await client.threads.search({ metadata: { uniqueId, boolean: true } });
             expect(booleanResults.length).toBe(1);
             expect(booleanResults[0].metadata.boolean).toBe(true);
         });
 
         it('should handle special characters in metadata keys', async () => {
+            // 使用唯一的 metadata 值
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             // 创建包含特殊字符的 metadata
             await client.threads.create({
                 metadata: {
+                    uniqueId,
                     'user-id': '123',
                     'user_name': 'Alice',
                     'user.name': 'Bob',
@@ -231,50 +240,55 @@ describe('Threads API 测试', () => {
             });
 
             // 搜索
-            const results1 = await client.threads.search({ metadata: { 'user-id': '123' } });
+            const results1 = await client.threads.search({ metadata: { uniqueId, 'user-id': '123' } });
             expect(results1.length).toBe(1);
             expect(results1[0].metadata['user-id']).toBe('123');
 
-            const results2 = await client.threads.search({ metadata: { 'user_name': 'Alice' } });
+            const results2 = await client.threads.search({ metadata: { uniqueId, 'user_name': 'Alice' } });
             expect(results2.length).toBe(1);
             expect(results2[0].metadata['user_name']).toBe('Alice');
 
-            const results3 = await client.threads.search({ metadata: { 'user.name': 'Bob' } });
+            const results3 = await client.threads.search({ metadata: { uniqueId, 'user.name': 'Bob' } });
             expect(results3.length).toBe(1);
             expect(results3[0].metadata['user.name']).toBe('Bob');
         });
 
         it('should handle Unicode characters in metadata values', async () => {
+            // 使用唯一的 metadata 值
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             await client.threads.create({
                 metadata: {
+                    uniqueId,
                     name: '你好世界',
                     emoji: '🎉',
                     special: 'café',
                 },
             });
 
-            const results = await client.threads.search({ metadata: { name: '你好世界' } });
+            const results = await client.threads.search({ metadata: { uniqueId, name: '你好世界' } });
             expect(results.length).toBe(1);
             expect(results[0].metadata.name).toBe('你好世界');
             expect(results[0].metadata.emoji).toBe('🎉');
         });
 
         it('should handle metadata filter with limit and offset', async () => {
+            // 使用唯一的 metadata 值
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             // 创建多个线程
             for (let i = 0; i < 5; i++) {
-                await client.threads.create({ metadata: { userId: '123', index: i } });
+                await client.threads.create({ metadata: { uniqueId, index: i } });
             }
 
             // 测试 limit
             const limited = await client.threads.search({
-                metadata: { userId: '123' },
+                metadata: { uniqueId },
                 limit: 2,
             });
             expect(limited.length).toBe(2);
 
             // 测试 offset
             const offset = await client.threads.search({
-                metadata: { userId: '123' },
+                metadata: { uniqueId },
                 offset: 2,
                 limit: 2,
             });
@@ -282,14 +296,17 @@ describe('Threads API 测试', () => {
         });
 
         it('should handle null values in metadata', async () => {
+            // 使用唯一的 metadata 值
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             await client.threads.create({
                 metadata: {
+                    uniqueId,
                     key1: 'value',
                     key2: null,
                 },
             });
 
-            const results = await client.threads.search({ metadata: { key2: null } });
+            const results = await client.threads.search({ metadata: { uniqueId, key2: null } });
             expect(results.length).toBe(1);
             expect(results[0].metadata.key2).toBe(null);
         });

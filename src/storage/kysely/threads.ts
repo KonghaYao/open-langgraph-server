@@ -300,11 +300,21 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             throw new Error(`Thread with ID ${threadId} is busy, can't update state.`);
         }
 
-        if (!targetThread.metadata?.graph_id) {
-            throw new Error(`Thread with ID ${threadId} has no graph_id.`);
+        const graphId = targetThread.metadata?.graph_id as string | undefined;
+
+        // 如果没有 graph_id，直接更新 values 字段
+        if (!graphId) {
+            await this.set(threadId, {
+                values: thread.values! ?? null,
+            });
+
+            return {
+                configurable: {
+                    thread_id: threadId,
+                },
+            };
         }
 
-        const graphId = targetThread.metadata?.graph_id as string;
         const config = {
             configurable: {
                 thread_id: threadId,

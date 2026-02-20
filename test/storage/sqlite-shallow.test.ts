@@ -19,7 +19,6 @@ function createCheckpoint(id: string, parentId?: string): Checkpoint {
         channel_values: {},
         channel_versions: {},
         versions_seen: {},
-        channel_versions: {},
     };
 }
 

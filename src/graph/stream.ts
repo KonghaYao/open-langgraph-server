@@ -79,7 +79,6 @@ export async function streamStateWithQueue(
     try {
         sendedMetadataMessage = new Set();
         messageChunks = new Map<string, AIMessageChunk[]>();
-
         eventsIterator = await graph.stream(
             payload.command != null ? getLangGraphCommand(payload.command) : payload.input ?? null,
             {
@@ -143,10 +142,16 @@ export async function streamStateWithQueue(
                         ...(messageChunks!.get(message.id) ?? []),
                         message as AIMessageChunk,
                     ]);
+
                     await queue.push(
                         new EventMessage('messages/partial', [messageChunks!.get(message.id)!.reduce(concat)]),
                     );
+                    // unsure 没有办法判断结束情况, 故进行一个变体操作
+                    if (message.content === '' && !message.tool_calls?.length) {
+                        messageChunks.delete(message.id);
+                    }
                 } else {
+                    // ToolMessage 会到这里
                     await queue.push(new EventMessage('messages/partial', [message]));
                 }
             } else if (event[0] === 'updates') {
@@ -311,7 +316,7 @@ export async function* streamState(
         const nowState = await threads.get(threadId);
         // 在完成后清理队列
         if (nowState.status === 'interrupted') {
-            // 注意，interrupted 状态，直接拷贝一个需要恢复状态的队列即可
+            // 注意，interrupted 状态，直接拷贝一个需要恢复状态的队列即可, 拷贝到 threadId 的队列, 避免被删除
             await LangGraphGlobal.globalMessageQueue.copyQueue(queueId, threadId, 30000);
         } else {
             await threads.set(threadId, { status: 'idle', interrupts: {} });

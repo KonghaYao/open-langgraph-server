@@ -52,11 +52,7 @@ export async function streamRun(req: Request, context: LangGraphServerContext): 
                 writer.signal.addEventListener('abort', abortHandler);
 
                 try {
-                    generator = client.runs.stream(
-                        thread_id,
-                        payload.assistant_id,
-                        camelcaseKeys(payload) as any,
-                    );
+                    generator = client.runs.stream(thread_id, payload.assistant_id, camelcaseKeys(payload) as any);
 
                     for await (const { event, data } of generator) {
                         // 检查是否需要中断

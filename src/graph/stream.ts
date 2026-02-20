@@ -39,7 +39,11 @@ export async function streamStateWithQueue(
         checkpointer: payload.temporary ? null : undefined,
     });
 
-    const userStreamMode = Array.isArray(payload.streamMode) ? payload.streamMode : payload.streamMode ? [payload.streamMode] : [];
+    const userStreamMode = Array.isArray(payload.streamMode)
+        ? payload.streamMode
+        : payload.streamMode
+        ? [payload.streamMode]
+        : [];
 
     const libStreamMode: Set<LangGraphStreamMode> = new Set([
         'values',
@@ -108,8 +112,9 @@ export async function streamStateWithQueue(
             };
             if (event[0] === 'values') {
                 const value = event[1];
-                await queue.push(new EventMessage(getNameWithNs('values'), value));
                 if (getNameWithNs('values') === 'values') {
+                    // 只有最外层的 values 才触发存储
+                    await queue.push(new EventMessage(getNameWithNs('values'), value));
                     if (value?.__interrupt__) {
                         await threads.set(run.thread_id, {
                             status: 'interrupted',
@@ -296,10 +301,7 @@ export async function* streamState(
         // 等待后台任务完成（带超时）
         if (backgroundTask) {
             try {
-                await Promise.race([
-                    backgroundTask,
-                    new Promise<void>((resolve) => setTimeout(resolve, 1000)),
-                ]);
+                await Promise.race([backgroundTask, new Promise<void>((resolve) => setTimeout(resolve, 1000))]);
             } catch (e) {
                 // 忽略后台任务错误
             }

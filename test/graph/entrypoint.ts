@@ -21,7 +21,9 @@ const show_form = tool(
 );
 const count = tool(
     (props) => {
-        console.log(props);
+        if (props.number % 10 === 0) {
+            console.log(props.number, process.memoryUsage());
+        }
         return 'good, it is ' + props.number;
     },
     {

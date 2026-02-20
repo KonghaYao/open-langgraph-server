@@ -23,4 +23,7 @@ app.use('*', async (c, next) => {
 
 app.route('/', LangGraphApp);
 
-export default app;
+export default {
+    fetch: app.fetch,
+    port: 8123,
+};

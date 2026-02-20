@@ -84,6 +84,8 @@ export interface BaseStreamQueueInterface {
     cancel(): Promise<void>;
     /** 复制队列数据 / Copy queue data */
     copyToQueue(toId: string, ttl?: number): Promise<BaseStreamQueueInterface>;
+    /** 销毁队列，释放资源 / Destroy queue and release resources */
+    destroy?: () => Promise<void>;
 }
 
 export type QueueConstructor<Q extends BaseStreamQueueInterface> = (new (
@@ -160,11 +162,7 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * @param id 队列 ID / Queue ID
      */
     async cancelQueue(id: string): Promise<void> {
-        const queue = this.queues.get(id);
-        if (queue) {
-            await queue.cancel();
-            this.removeQueue(id);
-        }
+        await this.removeQueue(id);
     }
     /**
      * 向指定 id 的队列推送数据
@@ -213,10 +211,40 @@ export class StreamQueueManager<Q extends BaseStreamQueueInterface> {
      * @param id 队列 ID / Queue ID
      * @returns 是否成功删除 / Whether successfully deleted
      */
-    removeQueue(id: string) {
-        setTimeout(() => {
-            return this.queues.delete(id);
-        }, 500);
+    async removeQueue(id: string): Promise<boolean> {
+        const queue = this.queues.get(id);
+        if (!queue) {
+            return false;
+        }
+
+        // 先取消队列操作，停止所有异步任务
+        try {
+            await queue.cancel();
+        } catch (e) {
+            console.error('Error cancelling queue:', e);
+        }
+
+        // 清空队列数据
+        try {
+            const clearResult = queue.clear();
+            if (clearResult instanceof Promise) {
+                await clearResult;
+            }
+        } catch (e) {
+            console.error('Error clearing queue:', e);
+        }
+
+        // 调用 destroy 方法释放资源（如果存在）
+        if (typeof queue.destroy === 'function') {
+            try {
+                await queue.destroy();
+            } catch (e) {
+                console.error('Error destroying queue:', e);
+            }
+        }
+
+        // 从 Map 中删除
+        return this.queues.delete(id);
     }
 
     /**

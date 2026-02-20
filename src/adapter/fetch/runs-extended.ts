@@ -13,6 +13,7 @@ import {
 import { LangGraphServerContext } from './context';
 import { getGraph } from '../../utils/getGraph';
 import { streamState } from '../../graph/stream';
+import { LangGraphGlobal } from '../../global';
 
 /**
  * POST /threads/:thread_id/runs
@@ -43,8 +44,9 @@ export async function createRun(req: Request, context: LangGraphServerContext): 
         const run = await threads.createRun(thread_id, payload.assistant_id, camelPayload);
 
         // 异步执行图的流处理（不等待）
-        // 使用一个不返回的 Promise 来触发异步执行
+        // streamState 内部已处理队列清理，这里添加兜底清理防止异常情况
         (async () => {
+            let queueCleared = false;
             try {
                 for await (const _ of streamState(threads, run, camelPayload, {
                     attempt: 0,
@@ -54,6 +56,16 @@ export async function createRun(req: Request, context: LangGraphServerContext): 
                 }
             } catch (error) {
                 console.error('Background run error:', error);
+            } finally {
+                // 兜底清理队列，防止 streamState 的 finally 未执行时内存泄漏
+                if (!queueCleared) {
+                    queueCleared = true;
+                    try {
+                        await LangGraphGlobal.globalMessageQueue.removeQueue(run.run_id);
+                    } catch (e) {
+                        // 忽略清理错误
+                    }
+                }
             }
         })();
 

@@ -3,33 +3,131 @@ import { BaseStreamQueue } from '../../queue/stream_queue.js';
 import { BaseStreamQueueInterface } from '../../queue/stream_queue.js';
 import { createClient, RedisClientType } from 'redis';
 
+// 全局共享的 Redis 连接池
+let sharedRedisClient: RedisClientType | null = null;
+let connectionRefCount = 0;
+let connectionPromise: Promise<void> | null = null;
+let releaseTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * 获取共享的 Redis 连接（线程安全）
+ */
+async function getSharedRedisClient(): Promise<RedisClientType> {
+    // 如果已有连接，直接返回
+    if (sharedRedisClient && sharedRedisClient.isOpen) {
+        connectionRefCount++;
+        return sharedRedisClient;
+    }
+
+    // 如果正在建立连接，等待现有 Promise
+    if (connectionPromise) {
+        await connectionPromise;
+        if (sharedRedisClient) {
+            connectionRefCount++;
+            return sharedRedisClient;
+        }
+        // 连接失败，继续尝试创建
+    }
+
+    // 创建新的连接 Promise，防止并发创建多个连接
+    connectionPromise = (async () => {
+        const client = createClient({
+            url: process.env.REDIS_URL,
+        });
+        await client.connect();
+        sharedRedisClient = client as RedisClientType;
+    })();
+
+    try {
+        await connectionPromise;
+        connectionRefCount++;
+        return sharedRedisClient!;
+    } catch (error) {
+        // 连接失败时清理状态
+        connectionPromise = null;
+        throw error;
+    } finally {
+        connectionPromise = null;
+    }
+}
+
+/**
+ * 释放 Redis 连接引用
+ */
+async function releaseRedisClient(): Promise<void> {
+    if (connectionRefCount > 0) {
+        connectionRefCount--;
+    }
+
+    // 引用计数为 0 且超过一定时间没有新连接时才关闭
+    // 避免频繁开关连接
+    if (connectionRefCount <= 0 && sharedRedisClient) {
+        // 清理之前的延迟关闭定时器
+        if (releaseTimeoutId) {
+            clearTimeout(releaseTimeoutId);
+            releaseTimeoutId = null;
+        }
+
+        // 延迟关闭，给其他队列复用连接的机会
+        releaseTimeoutId = setTimeout(async () => {
+            if (connectionRefCount <= 0 && sharedRedisClient) {
+                try {
+                    await sharedRedisClient.quit();
+                } catch (e) {
+                    // 忽略关闭错误
+                }
+                sharedRedisClient = null;
+                connectionRefCount = 0;
+                releaseTimeoutId = null;
+            }
+        }, 5000);
+    }
+}
+
 /**
  * Redis Stream 实现的消息队列，用于存储消息
  * 使用 Redis Streams 替代 pub/sub，支持集群模式
  */
 export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueueInterface {
-    private redis: RedisClientType;
+    private redis: RedisClientType | null = null;
     private streamKey: string;
     private listKey: string;
     private isConnected = false;
     public cancelSignal: AbortController;
     private lastStreamId: string = '0'; // 最后读取的 Stream ID
     private pollInterval: number = 100; // 轮询间隔（毫秒）
+    private connectionReady: Promise<void>;
 
     constructor(readonly id: string, readonly compressMessages: boolean = true, readonly ttl: number = 300) {
         super(id, true, ttl);
         this.streamKey = `stream:${this.id}`;
         this.listKey = `queue:${this.id}`;
-        this.redis = createClient({
-            url: process.env.REDIS_URL,
-        });
         this.cancelSignal = new AbortController();
 
-        // 连接 Redis 客户端（检查是否已经连接）
-        if (!this.redis.isOpen) {
-            this.redis.connect();
+        // 异步初始化 Redis 连接
+        this.connectionReady = this.initConnection();
+    }
+
+    /**
+     * 初始化 Redis 连接（使用共享连接池）
+     */
+    private async initConnection(): Promise<void> {
+        try {
+            this.redis = await getSharedRedisClient();
+            this.isConnected = true;
+        } catch (error) {
+            console.error('Failed to connect to Redis:', error);
+            throw error;
         }
-        this.isConnected = true;
+    }
+
+    /**
+     * 确保连接已建立
+     */
+    private async ensureConnected(): Promise<void> {
+        if (!this.isConnected || !this.redis) {
+            await this.connectionReady;
+        }
     }
 
     /**
@@ -38,6 +136,9 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
      * - List: 用于 getAll() 批量获取历史数据
      */
     async push(item: EventMessage): Promise<void> {
+        await this.ensureConnected();
+        if (!this.redis) throw new Error('Redis connection not available');
+
         const encodedData = await this.encodeData(item);
         // 将 Uint8Array 转换为 base64 字符串，以便存储到 Redis Stream
         const dataString = Buffer.from(encodedData).toString('base64');
@@ -62,6 +163,13 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
      */
     async *onDataReceive(): AsyncGenerator<EventMessage, void, unknown> {
         let isStreamEnded = false;
+        let isCleanupDone = false;
+
+        // 等待连接建立
+        await this.ensureConnected();
+        if (!this.redis) {
+            throw new Error('Redis connection not available');
+        }
 
         // 检查是否已取消
         if (this.cancelSignal.signal.aborted) {
@@ -74,8 +182,23 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
         };
         this.cancelSignal.signal.addEventListener('abort', abortHandler);
 
+        const cleanup = () => {
+            if (isCleanupDone) return;
+            isCleanupDone = true;
+            try {
+                this.cancelSignal.signal.removeEventListener('abort', abortHandler);
+            } catch (e) {
+                console.error('Error removing abort listener:', e);
+            }
+        };
+
         try {
             while (!isStreamEnded && !this.cancelSignal.signal.aborted) {
+                // 检查 Redis 连接是否仍然有效
+                if (!this.redis || !this.isConnected) {
+                    break;
+                }
+
                 // 从 Stream 读取新消息（XREAD 阻塞读取）
                 const streams = await this.redis.xRead([{ key: this.streamKey, id: this.lastStreamId }], {
                     BLOCK: this.pollInterval,
@@ -126,7 +249,7 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
                 }
             }
         } finally {
-            this.cancelSignal.signal.removeEventListener('abort', abortHandler);
+            cleanup();
         }
     }
 
@@ -134,6 +257,9 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
      * 获取队列中的所有数据（从 List 获取历史数据）
      */
     async getAll(): Promise<EventMessage[]> {
+        await this.ensureConnected();
+        if (!this.redis) return [];
+
         const data = await this.redis.lRange(this.listKey, 0, -1);
 
         if (!data || data.length === 0) {
@@ -156,12 +282,21 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
     /**
      * 清空队列
      */
-    clear(): void {
-        if (this.isConnected) {
+    async clear(): Promise<void> {
+        if (this.isConnected && this.redis) {
             // 同时清空 Stream 和 List
-            this.redis.del(this.streamKey);
-            this.redis.del(this.listKey);
+            await Promise.all([this.redis.del(this.streamKey), this.redis.del(this.listKey)]);
         }
+    }
+
+    /**
+     * 销毁队列实例，释放 Redis 连接引用
+     */
+    async destroy(): Promise<void> {
+        await this.clear();
+        this.isConnected = false;
+        this.redis = null;
+        await releaseRedisClient();
     }
 
     /**
@@ -178,7 +313,13 @@ export class RedisStreamQueue extends BaseStreamQueue implements BaseStreamQueue
      * 复制队列到另一个队列
      */
     async copyToQueue(toId: string, ttl?: number): Promise<RedisStreamQueue> {
+        await this.ensureConnected();
+        if (!this.redis) throw new Error('Redis connection not available');
+
         const queue = new RedisStreamQueue(toId, this.compressMessages, ttl ?? this.ttl);
+        await queue.ensureConnected();
+
+        if (!queue.redis) throw new Error('Target Redis connection not available');
 
         // 复制 List
         await this.redis.copy(this.listKey, queue.listKey);

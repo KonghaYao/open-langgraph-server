@@ -69,9 +69,10 @@ export async function joinRunStream(req: Request, context: LangGraphServerContex
         return createSSEStream(
             withHeartbeat(async (writer) => {
                 const controller = new AbortController();
+                let cleanup: (() => void) | null = null;
 
                 if (cancel_on_disconnect) {
-                    const cleanup = () => {
+                    cleanup = () => {
                         controller.abort('Client disconnected');
                     };
 
@@ -101,6 +102,11 @@ export async function joinRunStream(req: Request, context: LangGraphServerContex
                                 error: error instanceof Error ? error.message : 'Unknown error',
                             }),
                         });
+                    }
+                } finally {
+                    // 移除 abort 事件监听器
+                    if (cleanup && req.signal) {
+                        req.signal.removeEventListener('abort', cleanup);
                     }
                 }
             }),

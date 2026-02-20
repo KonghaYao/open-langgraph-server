@@ -4,6 +4,8 @@ import { Assistant, Run, StreamMode, Metadata, AssistantGraph } from '@langchain
 import { getGraph, GRAPHS } from './utils/getGraph.js';
 import { LangGraphGlobal } from './global.js';
 import { AssistantSortBy, CancelAction, ILangGraphClient, RunStatus, SortOrder, StreamInputData } from './types.js';
+import type { BaseStreamQueueInterface } from './queue/stream_queue.js';
+import type { EventMessage } from './queue/event_message.js';
 export { registerGraph } from './utils/getGraph.js';
 
 export const AssistantEndpoint: ILangGraphClient['assistants'] = {
@@ -242,11 +244,21 @@ export const createEndpoint = () => {
                 const signal =
                     (options instanceof AbortSignal ? options : config.signal) || new AbortController().signal;
 
+                let queue: BaseStreamQueueInterface | null = null;
+                let generator: AsyncGenerator<EventMessage, void, unknown> | null = null;
+
                 try {
-                    // 获取 Redis 队列实例
-                    const queue = await LangGraphGlobal.globalMessageQueue.getQueue(runId);
+                    // 获取队列实例
+                    queue = await LangGraphGlobal.globalMessageQueue.getQueue(runId);
+
+                    // 获取历史数据
                     const allData = await queue.getAll();
                     for (const eventMessage of allData) {
+                        // 检查是否被取消
+                        if (signal.aborted) {
+                            return;
+                        }
+
                         yield {
                             id: eventMessage.id,
                             event: eventMessage.event as unknown as StreamEvent,
@@ -261,8 +273,10 @@ export const createEndpoint = () => {
                             return;
                         }
                     }
+
                     // 监听队列数据并转换格式
-                    for await (const eventMessage of queue.onDataReceive()) {
+                    generator = queue.onDataReceive();
+                    for await (const eventMessage of generator) {
                         // 检查是否被取消
                         if (signal.aborted) {
                             break;
@@ -289,7 +303,19 @@ export const createEndpoint = () => {
                     }
                 } catch (error) {
                     // 如果队列不存在或其他错误，记录警告但不抛出错误
-                    console.warn('Join stream failed:', error);
+                    if (!(error instanceof Error) || !error.message.includes('does not exist')) {
+                        console.warn('Join stream failed:', error);
+                    }
+                } finally {
+                    // 清理生成器，释放资源
+                    if (generator) {
+                        try {
+                            await generator.return(undefined);
+                        } catch (e) {
+                            // 忽略生成器清理错误
+                        }
+                    }
+                    // 注意：不在这里清理队列，队列由 streamState 在运行完成时统一清理
                 }
             },
         },

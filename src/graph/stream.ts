@@ -66,32 +66,35 @@ export async function streamStateWithQueue(
         ...payload.config?.metadata,
         run_attempt: options.attempt,
     };
-    const events = graph.stream(
-        payload.command != null ? getLangGraphCommand(payload.command) : payload.input ?? null,
-        {
-            interruptAfter: payload.interruptAfter,
-            interruptBefore: payload.interruptBefore,
-
-            tags: payload.config?.tags,
-            configurable: payload.config?.configurable,
-            recursionLimit: payload.config?.recursionLimit,
-            subgraphs: payload.streamSubgraphs,
-            metadata,
-
-            runId: run.run_id,
-            streamMode: [...libStreamMode],
-            signal: queue.cancelSignal.signal,
-        },
-    );
 
     // 在 try 块之前声明变量，确保 finally 块可以访问
-    let sendedMetadataMessage: Set<string>;
-    let messageChunks: Map<string, AIMessageChunk[]>;
+    let sendedMetadataMessage: Set<string> | null = null;
+    let messageChunks: Map<string, AIMessageChunk[]> | null = null;
+    let eventsIterator: AsyncIterable<any> | null = null;
 
     try {
         sendedMetadataMessage = new Set();
         messageChunks = new Map<string, AIMessageChunk[]>();
-        for await (const event of await events) {
+
+        eventsIterator = await graph.stream(
+            payload.command != null ? getLangGraphCommand(payload.command) : payload.input ?? null,
+            {
+                interruptAfter: payload.interruptAfter,
+                interruptBefore: payload.interruptBefore,
+
+                tags: payload.config?.tags,
+                configurable: payload.config?.configurable,
+                recursionLimit: payload.config?.recursionLimit,
+                subgraphs: payload.streamSubgraphs,
+                metadata,
+
+                runId: run.run_id,
+                streamMode: [...libStreamMode],
+                signal: queue.cancelSignal.signal,
+            },
+        );
+
+        for await (const event of eventsIterator) {
             let ns: string[] = [];
             /** @ts-ignore subgraph 类型可以为 [ns,name,value] */
             if (event.length === 3) {
@@ -122,21 +125,21 @@ export async function streamStateWithQueue(
                 const message = event[1][0];
                 const metadata = event[1][1];
                 // 只在第一次发送 metadata
-                if (message.id && !sendedMetadataMessage.has(message.id)) {
+                if (message.id && !sendedMetadataMessage!.has(message.id)) {
                     await queue.push(
                         new EventMessage('messages/metadata', {
                             [message.id]: metadata,
                         }),
                     );
-                    sendedMetadataMessage.add(message.id);
+                    sendedMetadataMessage!.add(message.id);
                 }
                 if (AIMessageChunk.isInstance(message) && message.id) {
-                    messageChunks.set(message.id, [
-                        ...(messageChunks.get(message.id) ?? []),
+                    messageChunks!.set(message.id, [
+                        ...(messageChunks!.get(message.id) ?? []),
                         message as AIMessageChunk,
                     ]);
                     await queue.push(
-                        new EventMessage('messages/partial', [messageChunks.get(message.id)!.reduce(concat)]),
+                        new EventMessage('messages/partial', [messageChunks!.get(message.id)!.reduce(concat)]),
                     );
                 } else {
                     await queue.push(new EventMessage('messages/partial', [message]));
@@ -146,18 +149,38 @@ export async function streamStateWithQueue(
                 await queue.push(new EventMessage(getNameWithNs('updates'), updates));
             }
         }
+    } catch (error) {
+        // 如果是取消错误，不记录
+        if (!(error instanceof Error && error.message?.includes('cancel'))) {
+            console.error('streamStateWithQueue error:', error);
+            // 推送错误信号，通知消费者
+            try {
+                await queue.push(new StreamErrorEventMessage(error as Error));
+            } catch (e) {
+                // 忽略推送错误
+            }
+        }
+        throw error;
     } finally {
         // 发送流结束信号
-        await queue.push(new StreamEndEventMessage());
+        try {
+            await queue.push(new StreamEndEventMessage());
+        } catch (e) {
+            // 忽略推送错误
+        }
+
         // 清理内存：清空 Set 和 Map
-        /** @ts-ignore */
         if (sendedMetadataMessage) {
             sendedMetadataMessage.clear();
+            sendedMetadataMessage = null;
         }
-        /** @ts-ignore */
         if (messageChunks) {
             messageChunks.clear();
+            messageChunks = null;
         }
+
+        // 清理迭代器引用
+        eventsIterator = null;
     }
 }
 
@@ -217,12 +240,14 @@ export async function* streamState(
     // 生成唯一的队列 ID
     const queueId = run.run_id;
     const threadId = run.thread_id;
+    let state: AsyncGenerator<EventMessage, void, unknown> | null = null;
+    
     try {
         // 启动队列推送任务（在后台异步执行）
         await threads.set(threadId, { status: 'busy' });
         await threads.updateRun(run.run_id, { status: 'running' });
         const queue = LangGraphGlobal.globalMessageQueue.createQueue(queueId);
-        const state = queue.onDataReceive();
+        state = queue.onDataReceive();
         streamStateWithQueue(threads, run, queue, payload, options).catch((error) => {
             if (error.message !== 'user cancel this run') console.error('Queue task error:', error);
             // 如果生产者出错，向队列推送错误信号
@@ -240,6 +265,16 @@ export async function* streamState(
         await threads.set(threadId, { status: 'error' });
         // throw error;
     } finally {
+        // 确保清理生成器
+        if (state) {
+            try {
+                await state.return(undefined);
+            } catch (e) {
+                // 忽略生成器清理错误
+            }
+            state = null;
+        }
+
         const nowState = await threads.get(threadId);
         // 在完成后清理队列
         if (nowState.status === 'interrupted') {
@@ -248,8 +283,7 @@ export async function* streamState(
         } else {
             await threads.set(threadId, { status: 'idle', interrupts: {} });
         }
-        // 清空队列数据，释放内存
-        await LangGraphGlobal.globalMessageQueue.clearQueue(queueId);
-        LangGraphGlobal.globalMessageQueue.removeQueue(queueId);
+        // 清空队列数据并释放资源
+        await LangGraphGlobal.globalMessageQueue.removeQueue(queueId);
     }
 }

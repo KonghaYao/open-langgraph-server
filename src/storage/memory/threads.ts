@@ -49,6 +49,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             thread_id: threadId,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            state_updated_at: new Date().toISOString(),
             metadata: payload?.metadata || {},
             status: 'idle',
             values: null as unknown as ValuesType,

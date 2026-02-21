@@ -14,7 +14,6 @@ export class MemoryStreamQueue extends BaseStreamQueue implements BaseStreamQueu
         const data = this.compressMessages ? ((await this.encodeData(item)) as unknown as EventMessage) : item;
         // 当 LG_TEMP_MESSAGE=true 时, 将不会暂存 message, 优化内存
         process.env.LG_TEMP_MESSAGE !== 'true' && this.data.push(data);
-        console.log(process.env.LG_TEMP_MESSAGE !== 'true');
         this.emit('dataChange', data);
     }
 

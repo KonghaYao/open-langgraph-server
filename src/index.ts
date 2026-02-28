@@ -5,3 +5,4 @@ export * from './global';
 export * from './threads/index';
 export * from './utils/createStateEntrypoint';
 export * from './agents/index';
+export * from './utils/titleGenerator';

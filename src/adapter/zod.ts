@@ -176,6 +176,7 @@ export const ThreadSearchPayloadSchema = z
                     'status',
                     'values',
                     'interrupts',
+                    'title',
                 ]),
             )
             .describe('Specify which fields to return. If not provided, all fields are returned.')

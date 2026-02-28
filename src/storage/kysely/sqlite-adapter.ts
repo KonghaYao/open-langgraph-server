@@ -130,9 +130,13 @@ export class SQLiteAdapter implements DatabaseAdapter {
                 metadata TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'idle',
                 "values" TEXT,
-                interrupts TEXT NOT NULL DEFAULT '{}'
+                interrupts TEXT NOT NULL DEFAULT '{}',
+                title TEXT
             )
         `.execute(db);
+
+        // 迁移：为已存在的表添加 title 字段（幂等）
+        await this.addColumnIfNotExists(db, 'threads', 'title', 'TEXT');
 
         // 创建 runs 表
         await sql`
@@ -148,6 +152,20 @@ export class SQLiteAdapter implements DatabaseAdapter {
                 FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
             )
         `.execute(db);
+    }
+
+    /**
+     * 幂等地添加列（如果列不存在）
+     * SQLite 不支持 IF NOT EXISTS for ALTER TABLE ADD COLUMN
+     */
+    private async addColumnIfNotExists(db: Kysely<Database>, table: string, column: string, type: string): Promise<void> {
+        // 查询表的列信息
+        const columns = await sql<{ name: string }>`PRAGMA table_info(${sql.raw(table)})`.execute(db);
+        const columnNames = columns.rows.map((row) => row.name);
+
+        if (!columnNames.includes(column)) {
+            await sql`ALTER TABLE ${sql.raw(table)} ADD COLUMN ${sql.raw(column)} ${sql.raw(type)}`.execute(db);
+        }
     }
 
     async createIndexes(db: Kysely<Database>): Promise<void> {

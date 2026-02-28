@@ -1,5 +1,5 @@
-import { Command, Config, Metadata, OnConflictBehavior, Run, Thread, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
-import { RunStatus, SortOrder, ThreadSortBy } from '../types';
+import { Command, Config, Metadata, OnConflictBehavior, Run, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
+import { RunStatus, SortOrder, ThreadSortBy, Thread } from '../types';
 
 export interface BaseThreadsManager<ValuesType = unknown> {
     setup(): Promise<void>;
@@ -20,7 +20,7 @@ export interface BaseThreadsManager<ValuesType = unknown> {
         sortBy?: ThreadSortBy;
         sortOrder?: SortOrder;
         values?: ValuesType;
-        select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts'>;
+        select?: Array<'thread_id' | 'created_at' | 'updated_at' | 'metadata' | 'config' | 'context' | 'status' | 'values' | 'interrupts' | 'title'>;
         /**
          * @default false
          * @deprecated Use `select` parameter instead for fine-grained field control
@@ -48,4 +48,10 @@ export interface BaseThreadsManager<ValuesType = unknown> {
         filter?: { source?: string; step?: number };
     }): Promise<ThreadState[]>;
     copy(threadId: string): Promise<Thread<ValuesType>>;
+    /**
+     * 原子性地设置标题（仅当标题为空时）
+     * 用于解决并发条件下的 TOCTOU 问题
+     * @returns 是否成功设置（true 表示设置成功，false 表示已有标题）
+     */
+    setTitleIfNull(threadId: string, title: string): Promise<boolean>;
 }

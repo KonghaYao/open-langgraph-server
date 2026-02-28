@@ -11,6 +11,7 @@ export interface ThreadsTable {
     status: string;
     values: any;
     interrupts: Record<string, any>;
+    title: string | null;
 }
 
 export interface CheckpointsTable {

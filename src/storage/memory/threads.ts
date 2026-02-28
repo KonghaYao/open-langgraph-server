@@ -5,13 +5,12 @@ import {
     Metadata,
     OnConflictBehavior,
     Run,
-    Thread,
     ThreadState,
     ThreadStatus,
 } from '@langgraph-js/sdk';
 import { getGraph } from '../../utils/getGraph.js';
 import { serialiseAsDict } from '../../graph/stream.js';
-import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
+import { RunStatus, SortOrder, ThreadSortBy, Thread } from '../../types';
 import { v7 } from 'uuid';
 
 // Store thread history states
@@ -54,6 +53,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             status: 'idle',
             values: null as unknown as ValuesType,
             interrupts: {},
+            title: null,
         };
 
         // Initialize checkpoint history
@@ -82,6 +82,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             | 'status'
             | 'values'
             | 'interrupts'
+            | 'title'
         >;
         withoutDetails?: boolean;
     }): Promise<Thread<ValuesType>[]> {
@@ -178,6 +179,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                     'status',
                     'values',
                     'interrupts',
+                    'title',
                 ]);
             }
 
@@ -188,6 +190,7 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             if (includeFields.has('status')) result.status = i.status;
             if (includeFields.has('values')) result.values = i.values;
             if (includeFields.has('interrupts')) result.interrupts = i.interrupts;
+            if (includeFields.has('title')) result.title = i.title;
 
             return result as Thread<ValuesType>;
         });
@@ -491,5 +494,23 @@ export class MemoryThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         };
         checkpoints.push(checkpoint);
         this.checkpoints.set(threadId, checkpoints);
+    }
+
+    async setTitleIfNull(threadId: string, title: string): Promise<boolean> {
+        const index = this.threads.findIndex((t) => t.thread_id === threadId);
+        if (index === -1) {
+            throw new Error(`Thread with ID ${threadId} not found.`);
+        }
+
+        // 原子性检查：仅当 title 为 null 时才设置
+        if (this.threads[index].title === null) {
+            this.threads[index] = {
+                ...this.threads[index],
+                title,
+                updated_at: new Date().toISOString(),
+            };
+            return true;
+        }
+        return false;
     }
 }

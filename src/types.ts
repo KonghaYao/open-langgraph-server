@@ -1,5 +1,5 @@
 import {
-    Thread,
+    Thread as BaseThread,
     Assistant,
     Run,
     StreamMode,
@@ -15,6 +15,15 @@ import {
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
 import { EventMessage } from './queue/event_message';
 import { RunnableConfig } from '@langchain/core/runnables';
+
+/**
+ * 扩展 Thread 类型，添加 title 字段
+ * 原始 Thread 类型来自 @langchain/langgraph-sdk，不包含 title
+ */
+export interface Thread<T = unknown> extends BaseThread<T> {
+    /** 会话标题（可选） */
+    title?: string | null;
+}
 
 // 基础类型定义
 export type AssistantSortBy = 'assistant_id' | 'graph_id' | 'name' | 'created_at' | 'updated_at';
@@ -116,6 +125,7 @@ export interface ILangGraphClient<TStateType = unknown> {
                 | 'status'
                 | 'values'
                 | 'interrupts'
+                | 'title'
             >;
             /**
              * @deprecated Use `select` parameter instead for fine-grained field control

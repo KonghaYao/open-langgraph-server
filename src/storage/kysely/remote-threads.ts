@@ -265,4 +265,25 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown> implements BaseThr
         const response = await remotePost<Thread<ValuesType>>(`${this.serverUrl}/threads/${threadId}/copy`);
         return response.data as Thread<ValuesType>;
     }
+
+    /**
+     * 原子性地设置标题（仅当标题为空时）
+     */
+    async setTitleIfNull(threadId: string, title: string): Promise<boolean> {
+        try {
+            const response = await remotePost<{ success: boolean }>(
+                `${this.serverUrl}/threads/${threadId}/title`,
+                { title },
+            );
+            return (response.data as { success: boolean }).success;
+        } catch (error) {
+            // 如果远程端不支持此操作，回退到普通设置
+            const thread = await this.get(threadId);
+            if (thread.title === null || thread.title === undefined) {
+                await this.set(threadId, { title } as Partial<Thread<ValuesType>>);
+                return true;
+            }
+            return false;
+        }
+    }
 }

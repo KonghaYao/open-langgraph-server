@@ -6,6 +6,7 @@ import { LangGraphGlobal } from './global.js';
 import { AssistantSortBy, CancelAction, ILangGraphClient, RunStatus, SortOrder, StreamInputData } from './types.js';
 import type { BaseStreamQueueInterface } from './queue/stream_queue.js';
 import type { EventMessage } from './queue/event_message.js';
+import { generateThreadTitle } from './utils/titleGeneratorHelper.js';
 export { registerGraph } from './utils/getGraph.js';
 
 export const AssistantEndpoint: ILangGraphClient['assistants'] = {
@@ -215,16 +216,26 @@ export const createEndpoint = () => {
                     },
                 };
                 const threads = getThreads();
-                for await (const data of streamState(
-                    threads,
-                    threads.createRun(threadId, assistantId, payload),
-                    payload,
-                    {
-                        attempt: 0,
-                        getGraph,
-                    },
-                )) {
-                    yield data;
+                const runPromise = threads.createRun(threadId, assistantId, payload);
+
+                try {
+                    // 执行流处理
+                    for await (const data of streamState(threads, runPromise, payload, { attempt: 0, getGraph })) {
+                        yield data;
+                    }
+
+                    // 流结束后生成标题
+                    const run = await runPromise;
+                    await generateThreadTitle(threads, threadId, assistantId, run.run_id);
+                } catch (error) {
+                    // 即使流失败，也尝试生成标题（如果已有部分 state）
+                    try {
+                        const run = await runPromise;
+                        await generateThreadTitle(threads, threadId, assistantId, run.run_id);
+                    } catch {
+                        // 忽略标题生成错误
+                    }
+                    throw error;
                 }
             },
             async *joinStream(

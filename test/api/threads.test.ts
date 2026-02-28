@@ -103,6 +103,31 @@ describe('Threads API 测试', () => {
             expect(threads[0]).toHaveProperty('thread_id');
             expect(threads[0]).toHaveProperty('created_at');
             expect(threads[0]).toHaveProperty('updated_at');
+            expect(threads[0]).toHaveProperty('title');
+        });
+
+        it('should search threads with title field', async () => {
+            const thread = await client.threads.create();
+            const threads = await client.threads.search();
+            const foundThread = threads.find(t => t.thread_id === thread.thread_id);
+            expect(foundThread).toBeDefined();
+            expect(foundThread).toHaveProperty('title');
+            // 新创建的 thread 标题应该是 null
+            expect(foundThread!.title).toBeNull();
+        });
+
+        it('should return title field when using select parameter', async () => {
+            const thread = await client.threads.create();
+            const threads = await client.threads.search({
+                select: ['thread_id', 'title'],
+            });
+            const foundThread = threads.find(t => t.thread_id === thread.thread_id);
+            expect(foundThread).toBeDefined();
+            expect(foundThread).toHaveProperty('thread_id');
+            expect(foundThread).toHaveProperty('title');
+            // 不应该包含未选择的字段
+            expect(foundThread).not.toHaveProperty('values');
+            expect(foundThread).not.toHaveProperty('metadata');
         });
 
         it('should search threads with limit', async () => {
@@ -357,6 +382,7 @@ describe('Threads API 测试', () => {
             expect(thread).toHaveProperty('thread_id', testThreadId);
             expect(thread).toHaveProperty('created_at');
             expect(thread).toHaveProperty('updated_at');
+            expect(thread).toHaveProperty('title');
         });
 
         it('should throw error for non-existent thread', async () => {

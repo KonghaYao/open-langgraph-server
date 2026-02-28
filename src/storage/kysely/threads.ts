@@ -1,16 +1,7 @@
 import { Kysely } from 'kysely';
 import { BaseThreadsManager } from '../../threads/index.js';
-import {
-    Command,
-    Config,
-    Metadata,
-    OnConflictBehavior,
-    Run,
-    Thread,
-    ThreadState,
-    ThreadStatus,
-} from '@langgraph-js/sdk';
-import { RunStatus, SortOrder, ThreadSortBy } from '../../types';
+import { Command, Config, Metadata, OnConflictBehavior, Run, ThreadState, ThreadStatus } from '@langgraph-js/sdk';
+import { RunStatus, SortOrder, ThreadSortBy, Thread } from '../../types';
 import { Database } from './types';
 import { DatabaseAdapter } from './adapter';
 import { getGraph } from '../../utils/getGraph.js';
@@ -79,6 +70,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                     status: existing.status as ThreadStatus,
                     values: existing.values ? this.adapter.dbToJson(existing.values) : (null as unknown as ValuesType),
                     interrupts: this.adapter.dbToJson(existing.interrupts),
+                    title: existing.title,
                 };
             }
         }
@@ -106,6 +98,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             status: 'idle',
             values: null as unknown as ValuesType,
             interrupts,
+            title: null,
         };
     }
 
@@ -140,7 +133,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             selectedFields = new Set(query.select);
         } else if (query?.withoutDetails) {
             // Legacy withoutDetails behavior - exclude values and interrupts
-            selectedFields = new Set(['thread_id', 'created_at', 'updated_at', 'metadata', 'status']);
+            selectedFields = new Set(['thread_id', 'created_at', 'updated_at', 'metadata', 'status', 'title']);
         } else {
             // All fields
             selectedFields = new Set([
@@ -151,6 +144,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 'status',
                 'values',
                 'interrupts',
+                'title',
             ]);
         }
 
@@ -163,6 +157,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
         if (selectedFields.has('status')) selections.push('status');
         if (selectedFields.has('values')) selections.push('values');
         if (selectedFields.has('interrupts')) selections.push('interrupts');
+        if (selectedFields.has('title')) selections.push('title');
 
         if (selections.length > 0) {
             queryBuilder = queryBuilder.select(selections);
@@ -223,7 +218,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             if (selectedFields.has('values'))
                 result.values = row.values ? this.adapter.dbToJson(row.values) : (null as unknown as ValuesType);
             if (selectedFields.has('interrupts')) result.interrupts = this.adapter.dbToJson(row.interrupts);
-
+            if (selectedFields.has('title')) result.title = row.title;
             return result as Thread<ValuesType>;
         });
     }
@@ -248,6 +243,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             status: row.status as ThreadStatus,
             values: row.values ? this.adapter.dbToJson(row.values) : (null as unknown as ValuesType),
             interrupts: this.adapter.dbToJson(row.interrupts),
+            title: row.title,
         };
     }
 
@@ -282,6 +278,10 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
 
         if (thread.interrupts !== undefined) {
             updates.interrupts = this.adapter.jsonToDb(thread.interrupts);
+        }
+
+        if (thread.title !== undefined) {
+            updates.title = thread.title;
         }
 
         await this.db.updateTable('threads').set(updates).where('thread_id', '=', threadId).execute();
@@ -480,6 +480,10 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
             patchUpdates.interrupts = this.adapter.jsonToDb(updates.interrupts);
         }
 
+        if (updates.title !== undefined) {
+            patchUpdates.title = updates.title;
+        }
+
         await this.db.updateTable('threads').set(patchUpdates).where('thread_id', '=', threadId).execute();
 
         // 返回更新后的线程
@@ -567,7 +571,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                     created_at: this.adapter.dbToDate(cp.created_at).toISOString(),
                     parent_checkpoint: null,
                     tasks: [],
-                } satisfies ThreadState),
+                }) satisfies ThreadState,
         );
 
         // Filter by 'before' checkpoint ID
@@ -603,6 +607,7 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 status: originalThread.status,
                 values: originalThread.values ? (this.adapter.jsonToDb(originalThread.values) as any) : (null as any),
                 interrupts: this.adapter.jsonToDb(originalThread.interrupts) as any,
+                title: originalThread.title,
             })
             .execute();
 
@@ -657,5 +662,20 @@ export class KyselyThreadsManager<ValuesType = unknown> implements BaseThreadsMa
                 metadata: this.adapter.jsonToDb(metadata || {}) as any,
             })
             .execute();
+    }
+
+    async setTitleIfNull(threadId: string, title: string): Promise<boolean> {
+        const result = await this.db
+            .updateTable('threads')
+            .set({
+                title,
+                updated_at: this.adapter.dateToDb(new Date()),
+            })
+            .where('thread_id', '=', threadId)
+            .where('title', 'is', null)
+            .executeTakeFirst();
+
+        // numUpdatedRows 表示实际更新的行数
+        return result.numUpdatedRows > 0n;
     }
 }

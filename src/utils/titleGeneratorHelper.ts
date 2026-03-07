@@ -16,7 +16,7 @@ import { LangGraphGlobal } from '../global.js';
  * @param runId Run ID
  */
 export async function generateThreadTitle(
-    threads: BaseThreadsManager,
+    threads: BaseThreadsManager<{ messages: any[] }>,
     threadId: string,
     graphId: string,
     runId: string,

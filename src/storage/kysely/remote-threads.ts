@@ -13,7 +13,10 @@ import { RemoteApiError, RemoteErrorCode } from '../remote/types';
  * 远程 Kysely Threads Manager
  */
 export class RemoteKyselyThreadsManager<ValuesType = unknown> implements BaseThreadsManager<ValuesType> {
-    constructor(private serverUrl: string, private httpClient?: typeof fetch) {
+    constructor(
+        private serverUrl: string,
+        private httpClient?: typeof fetch,
+    ) {
         // 确保服务器 URL 没有尾部斜杠
         this.serverUrl = serverUrl.replace(/\/$/, '');
         this.httpClient = httpClient || fetch;
@@ -271,15 +274,15 @@ export class RemoteKyselyThreadsManager<ValuesType = unknown> implements BaseThr
      */
     async setTitleIfNull(threadId: string, title: string): Promise<boolean> {
         try {
-            const response = await remotePost<{ success: boolean }>(
-                `${this.serverUrl}/threads/${threadId}/title`,
-                { title },
-            );
+            const response = await remotePost<{ success: boolean }>(`${this.serverUrl}/threads/${threadId}/title`, {
+                title,
+            });
             return (response.data as { success: boolean }).success;
         } catch (error) {
             // 如果远程端不支持此操作，回退到普通设置
             const thread = await this.get(threadId);
-            if (thread.title === null || thread.title === undefined) {
+            /** @ts-ignore */
+            if (thread?.title === null || thread?.title === undefined) {
                 await this.set(threadId, { title } as Partial<Thread<ValuesType>>);
                 return true;
             }

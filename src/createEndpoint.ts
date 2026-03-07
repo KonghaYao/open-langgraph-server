@@ -7,6 +7,7 @@ import { AssistantSortBy, CancelAction, ILangGraphClient, RunStatus, SortOrder, 
 import type { BaseStreamQueueInterface } from './queue/stream_queue.js';
 import type { EventMessage } from './queue/event_message.js';
 import { generateThreadTitle } from './utils/titleGeneratorHelper.js';
+import { BaseThreadsManager } from './threads/index.js';
 export { registerGraph } from './utils/getGraph.js';
 
 export const AssistantEndpoint: ILangGraphClient['assistants'] = {
@@ -30,7 +31,7 @@ export const AssistantEndpoint: ILangGraphClient['assistants'] = {
                     description: '',
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
-                } as Assistant),
+                }) as Assistant,
         );
 
         // Filter by graphId
@@ -226,12 +227,22 @@ export const createEndpoint = () => {
 
                     // 流结束后生成标题
                     const run = await runPromise;
-                    await generateThreadTitle(threads, threadId, assistantId, run.run_id);
+                    await generateThreadTitle(
+                        threads as BaseThreadsManager<{ messages: any[] }>,
+                        threadId,
+                        assistantId,
+                        run.run_id,
+                    );
                 } catch (error) {
                     // 即使流失败，也尝试生成标题（如果已有部分 state）
                     try {
                         const run = await runPromise;
-                        await generateThreadTitle(threads, threadId, assistantId, run.run_id);
+                        await generateThreadTitle(
+                            threads as BaseThreadsManager<{ messages: any[] }>,
+                            threadId,
+                            assistantId,
+                            run.run_id,
+                        );
                     } catch {
                         // 忽略标题生成错误
                     }

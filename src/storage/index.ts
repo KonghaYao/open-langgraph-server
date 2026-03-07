@@ -16,7 +16,10 @@ export { SqliteShallowSaver } from './sqlite/shallow-checkpoint';
 // 所有的适配实现，都请写到这里，通过环境变量进行判断使用哪种方式进行适配
 export const createCheckPointer = async () => {
     // Redis checkpointer (full or shallow)
-    if (process.env.REDIS_URL && (process.env.CHECKPOINT_TYPE === 'redis' || process.env.CHECKPOINT_TYPE === 'shallow/redis')) {
+    if (
+        process.env.REDIS_URL &&
+        (process.env.CHECKPOINT_TYPE === 'redis' || process.env.CHECKPOINT_TYPE === 'shallow/redis')
+    ) {
         if (process.env.CHECKPOINT_TYPE === 'redis') {
             console.debug('LG | Using redis as checkpoint');
             const { RedisSaver } = await import('@langchain/langgraph-checkpoint-redis');
@@ -91,7 +94,9 @@ function getDatabaseType(databaseUrl: string): 'postgres' | 'remote' {
     return 'postgres';
 }
 
-export const createThreadManager = async (config: { checkpointer?: SqliteSaverType | SqliteShallowSaverType | PostgresSaver }) => {
+export const createThreadManager = async (config: {
+    checkpointer?: SqliteSaverType | SqliteShallowSaverType | PostgresSaver;
+}) => {
     if (process.env.DATABASE_URL) {
         const dbType = getDatabaseType(process.env.DATABASE_URL);
 

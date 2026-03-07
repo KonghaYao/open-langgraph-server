@@ -190,7 +190,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
     static async fromConnStringAsync(connStringOrLocalPath: string): Promise<SqliteSaver> {
         let saver: SqliteSaver;
         /** @ts-ignore */
-        if (globalThis.Bun) {
+        if (globalThis.Bun && !process.env.DISABLE_BUN_SQLITE) {
             console.log('LG | Using BunWorkerDialect ' + connStringOrLocalPath);
             const { BunSqliteDialect } = await import('kysely-bun-worker/normal');
             // 使用 BunSqliteDialect（非 Worker 模式）避免 Worker 事务状态同步问题

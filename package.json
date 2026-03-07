@@ -1,6 +1,6 @@
 {
     "name": "@langgraph-js/pure-graph",
-    "version": "3.3.0",
+    "version": "3.3.3",
     "description": "A library that provides a standard LangGraph endpoint for integrating into various frameworks like Next.js and Hono.js, with support for multiple storage backends (SQLite, PostgreSQL, Redis) and message queues.",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
@@ -16,7 +16,7 @@
         "dev:docs": "bunx --bun xyd-js@0.1.0-alpha.5",
         "build": " vite build && tsc",
         "docs:build": "pnpx xyd-js@0.1.0-alpha.5 build",
-        "prepublish": "pnpm build",
+        "prepublishOnly": "pnpm build",
         "test": "vitest",
         "test:run": "vitest run",
         "test:coverage": "vitest run --coverage"
